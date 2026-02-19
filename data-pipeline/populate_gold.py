@@ -173,22 +173,37 @@ async def populate_market_price_history_simple(conn):
         )
         SELECT
             COALESCE(m.id, gen_random_uuid()),
-            p.source,
-            p.source_market_id,
-            date_trunc('hour', p.snapshot_at),
-            date_trunc('hour', p.snapshot_at) + INTERVAL '1 hour',
+            agg.source,
+            agg.source_market_id,
+            agg.hour_bucket,
+            agg.hour_bucket + INTERVAL '1 hour',
             '1h',
-            p.yes_price, p.yes_price, p.yes_price, p.yes_price,
-            COALESCE(p.volume_1h, 0),
-            COALESCE(p.trade_count_1h, 0)
-        FROM predictions_silver.prices p
+            agg.avg_price, agg.max_price, agg.min_price, agg.last_price,
+            agg.total_volume,
+            agg.total_trades
+        FROM (
+            SELECT
+                source,
+                source_market_id,
+                date_trunc('hour', snapshot_at) AS hour_bucket,
+                AVG(yes_price)                  AS avg_price,
+                MAX(yes_price)                  AS max_price,
+                MIN(yes_price)                  AS min_price,
+                (ARRAY_AGG(yes_price ORDER BY snapshot_at DESC))[1] AS last_price,
+                COALESCE(SUM(volume_1h), 0)     AS total_volume,
+                COALESCE(SUM(trade_count_1h), 0) AS total_trades
+            FROM predictions_silver.prices
+            WHERE yes_price IS NOT NULL
+            GROUP BY source, source_market_id, date_trunc('hour', snapshot_at)
+        ) agg
         LEFT JOIN predictions_silver.markets m
-            ON m.source_market_id = p.source_market_id AND m.source = p.source
-        WHERE p.yes_price IS NOT NULL
+            ON m.source_market_id = agg.source_market_id AND m.source = agg.source
         ON CONFLICT (source_market_id, period_start, granularity) DO UPDATE SET
             close_price = EXCLUDED.close_price,
-            volume      = EXCLUDED.volume + market_price_history.volume,
-            trade_count = EXCLUDED.trade_count + market_price_history.trade_count
+            high_price  = GREATEST(market_price_history.high_price, EXCLUDED.high_price),
+            low_price   = LEAST(market_price_history.low_price, EXCLUDED.low_price),
+            volume      = EXCLUDED.volume,
+            trade_count = EXCLUDED.trade_count
     """)
     count = int(result.split()[-1])
     print(f"  market_price_history (simple): {count} rows upserted")

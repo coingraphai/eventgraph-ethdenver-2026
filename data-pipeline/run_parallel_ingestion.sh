@@ -32,5 +32,12 @@ cd "/Users/ajayprashanth/Desktop/ETH Denver/eventgraph-ethdenver-2026/data-pipel
 
 echo ""
 echo "========================================================================"
-echo "✅ Ingestion complete!"
+echo "🏆 Refreshing gold layer..."
+echo "========================================================================"
+"/Users/ajayprashanth/Desktop/ETH Denver/eventgraph-ethdenver-2026/.venv/bin/python" \
+  "/Users/ajayprashanth/Desktop/ETH Denver/eventgraph-ethdenver-2026/data-pipeline/populate_gold.py"
+
+echo ""
+echo "========================================================================"
+echo "✅ Ingestion + Gold layer refresh complete!"
 echo "========================================================================"

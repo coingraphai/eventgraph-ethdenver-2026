@@ -307,19 +307,19 @@ class DomeClient(BaseAPIClient):
             
             # Volume fields - map platform-specific names
             volume_24h=self._to_decimal(
-                raw.get("volume_24h") or raw.get("volume24hr"), 
+                raw.get("volume_24h") or raw.get("volume24hr") or raw.get("volume_1_day"),
                 Decimal("0")
             ),
             volume_7d=self._to_decimal(
-                raw.get("volume_7d") or raw.get("volume_1_week") or raw.get("volume7d"), 
+                raw.get("volume_7d") or raw.get("volume_1_week") or raw.get("volume7d"),
                 Decimal("0")
             ),
             volume_30d=self._to_decimal(
-                raw.get("volume_30d") or raw.get("volume_1_month") or raw.get("volume30d"), 
+                raw.get("volume_30d") or raw.get("volume_1_month") or raw.get("volume30d"),
                 Decimal("0")
             ),
             volume_total=self._to_decimal(
-                raw.get("volume_total") or raw.get("volume") or raw.get("total_volume"), 
+                raw.get("volume_total") or raw.get("volume") or raw.get("total_volume"),
                 Decimal("0")
             ),
             liquidity=self._to_decimal(raw.get("liquidity") or raw.get("liquidityUsd"), Decimal("0")),
