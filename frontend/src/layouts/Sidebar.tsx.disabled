@@ -1,0 +1,337 @@
+/**
+ * Event Graph - Streamlined Sidebar
+ * Focused navigation for YC demo - 6 core pages
+ */
+
+import React from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Box,
+  Drawer,
+  IconButton,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+  Stack,
+  Typography,
+  Tooltip,
+  Chip,
+} from '@mui/material';
+import {
+  Menu as MenuIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ShowChart as MarketsIcon,
+  Terminal as TerminalIcon,
+  FilterList as ScreenerIcon,
+  AccountBalanceWallet as PortfolioIcon,
+  SwapHoriz as ArbitrageIcon,
+  AutoAwesome as AskAIIcon,
+  TrendingUp,
+} from '@mui/icons-material';
+import { useTheme, alpha } from '@mui/material/styles';
+
+interface SidebarProps {
+  open: boolean;
+  onToggle: () => void;
+  onNewChat: () => void;
+  onSelectSession: (sessionId: number) => void;
+  activeSessionId?: number | null;
+  userId: string;
+  refreshTrigger?: number;
+}
+
+interface NavItem {
+  name: string;
+  icon: React.ElementType;
+  route: string;
+  badge?: string;
+  isNew?: boolean;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({
+  open,
+  onToggle,
+}) => {
+  const sidebarWidth = open ? 200 : 64;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const theme = useTheme();
+
+  // Streamlined navigation - 6 core pages for YC demo
+  const navItems: NavItem[] = [
+    { name: 'Markets', icon: MarketsIcon, route: '/events' },
+    { name: 'Terminal', icon: TerminalIcon, route: '/terminal' },
+    { name: 'Screener', icon: ScreenerIcon, route: '/screener' },
+    { name: 'Portfolio', icon: PortfolioIcon, route: '/portfolio' },
+    { name: 'Arbitrage', icon: ArbitrageIcon, route: '/arbitrage', isNew: true },
+    { name: 'Ask AI', icon: AskAIIcon, route: '/ask-predictions' },
+  ];
+
+  const isActive = (route: string) => {
+    if (route === '/') return location.pathname === '/';
+    return location.pathname.startsWith(route);
+  };
+
+  const renderNavItem = (item: NavItem, showTooltip: boolean = false) => {
+    const Icon = item.icon;
+    const active = isActive(item.route);
+    
+    const button = (
+      <ListItemButton
+        component={Link}
+        to={item.route}
+        selected={active}
+        sx={{
+          borderRadius: 1.5,
+          mb: 0.5,
+          py: open ? 1 : 1.25,
+          px: open ? 1.5 : 1,
+          minHeight: open ? 44 : 52,
+          flexDirection: open ? 'row' : 'column',
+          alignItems: 'center',
+          justifyContent: open ? 'flex-start' : 'center',
+          transition: 'all 0.15s ease',
+          '&:hover': {
+            backgroundColor: alpha(theme.palette.primary.main, 0.08),
+          },
+          '&.Mui-selected': {
+            backgroundColor: alpha(theme.palette.primary.main, 0.12),
+            '&:hover': {
+              backgroundColor: alpha(theme.palette.primary.main, 0.16),
+            },
+          },
+        }}
+      >
+        <ListItemIcon
+          sx={{
+            minWidth: open ? 36 : 'auto',
+            color: active ? 'primary.main' : 'text.secondary',
+            justifyContent: 'center',
+          }}
+        >
+          <Icon sx={{ fontSize: open ? 20 : 22 }} />
+        </ListItemIcon>
+        {open && (
+          <Stack direction="row" alignItems="center" spacing={1} sx={{ flex: 1 }}>
+            <ListItemText
+              primary={item.name}
+              primaryTypographyProps={{
+                fontSize: '0.85rem',
+                fontWeight: active ? 600 : 500,
+                color: active ? 'primary.main' : 'text.primary',
+              }}
+              sx={{ m: 0 }}
+            />
+            {item.isNew && (
+              <Chip
+                label="NEW"
+                size="small"
+                sx={{
+                  height: 16,
+                  fontSize: '0.55rem',
+                  fontWeight: 700,
+                  backgroundColor: alpha(theme.palette.success.main, 0.15),
+                  color: theme.palette.success.main,
+                  border: `1px solid ${alpha(theme.palette.success.main, 0.3)}`,
+                  '& .MuiChip-label': { px: 0.75 },
+                }}
+              />
+            )}
+          </Stack>
+        )}
+        {!open && (
+          <Typography
+            variant="caption"
+            sx={{
+              fontSize: '0.55rem',
+              fontWeight: active ? 600 : 500,
+              color: active ? 'primary.main' : 'text.secondary',
+              mt: 0.5,
+              lineHeight: 1,
+            }}
+          >
+            {item.name}
+          </Typography>
+        )}
+      </ListItemButton>
+    );
+
+    if (!open && showTooltip) {
+      return (
+        <Tooltip key={item.name} title={item.name} placement="right" arrow>
+          {button}
+        </Tooltip>
+      );
+    }
+
+    return button;
+  };
+
+  return (
+    <Drawer
+      variant="permanent"
+      sx={{
+        width: sidebarWidth,
+        flexShrink: 0,
+        '& .MuiDrawer-paper': {
+          width: sidebarWidth,
+          boxSizing: 'border-box',
+          backgroundColor: theme.palette.background.default,
+          borderRight: `1px solid ${alpha(theme.palette.divider, 0.08)}`,
+          transition: 'width 0.2s ease-in-out',
+          overflowX: 'hidden',
+          overflowY: 'auto',
+        },
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          py: 1.5,
+          px: open ? 1.5 : 1,
+        }}
+      >
+        {/* Logo and Toggle */}
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent={open ? 'space-between' : 'center'}
+          sx={{ mb: 2, px: open ? 0.5 : 0 }}
+        >
+          {open ? (
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <Box
+                sx={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 1.5,
+                  background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <TrendingUp sx={{ color: 'white', fontSize: 16 }} />
+              </Box>
+              <Typography
+                variant="subtitle1"
+                fontWeight={700}
+                sx={{
+                  background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.text.primary} 100%)`,
+                  backgroundClip: 'text',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  fontSize: '0.95rem',
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                Event Graph
+              </Typography>
+            </Stack>
+          ) : (
+            <Box
+              sx={{
+                width: 32,
+                height: 32,
+                borderRadius: 1.5,
+                background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <TrendingUp sx={{ color: 'white', fontSize: 18 }} />
+            </Box>
+          )}
+          <IconButton
+            onClick={onToggle}
+            size="small"
+            sx={{
+              color: 'text.secondary',
+              width: 28,
+              height: 28,
+              ml: open ? 0 : 0,
+              '&:hover': {
+                backgroundColor: alpha(theme.palette.text.primary, 0.05),
+              },
+            }}
+          >
+            {open ? <ChevronLeftIcon fontSize="small" /> : <MenuIcon fontSize="small" />}
+          </IconButton>
+        </Stack>
+
+        {/* Navigation Items */}
+        <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
+          <List sx={{ px: 0, py: 0 }}>
+            {navItems.map((item) => (
+              <Box key={item.name}>{renderNavItem(item, true)}</Box>
+            ))}
+          </List>
+        </Box>
+
+        {/* Home link at bottom */}
+        <Box sx={{ mt: 'auto', pt: 1, borderTop: `1px solid ${alpha(theme.palette.divider, 0.08)}` }}>
+          <ListItemButton
+            component={Link}
+            to="/"
+            selected={location.pathname === '/'}
+            sx={{
+              borderRadius: 1.5,
+              py: open ? 1 : 1.25,
+              px: open ? 1.5 : 1,
+              minHeight: open ? 44 : 52,
+              flexDirection: open ? 'row' : 'column',
+              alignItems: 'center',
+              justifyContent: open ? 'flex-start' : 'center',
+              transition: 'all 0.15s ease',
+              '&:hover': {
+                backgroundColor: alpha(theme.palette.primary.main, 0.08),
+              },
+              '&.Mui-selected': {
+                backgroundColor: alpha(theme.palette.primary.main, 0.12),
+              },
+            }}
+          >
+            <ListItemIcon
+              sx={{
+                minWidth: open ? 36 : 'auto',
+                color: location.pathname === '/' ? 'primary.main' : 'text.secondary',
+                justifyContent: 'center',
+              }}
+            >
+              <TrendingUp sx={{ fontSize: open ? 20 : 22 }} />
+            </ListItemIcon>
+            {open && (
+              <ListItemText
+                primary="Dashboard"
+                primaryTypographyProps={{
+                  fontSize: '0.85rem',
+                  fontWeight: location.pathname === '/' ? 600 : 500,
+                  color: location.pathname === '/' ? 'primary.main' : 'text.primary',
+                }}
+                sx={{ m: 0 }}
+              />
+            )}
+            {!open && (
+              <Typography
+                variant="caption"
+                sx={{
+                  fontSize: '0.55rem',
+                  fontWeight: location.pathname === '/' ? 600 : 500,
+                  color: location.pathname === '/' ? 'primary.main' : 'text.secondary',
+                  mt: 0.5,
+                  lineHeight: 1,
+                }}
+              >
+                Home
+              </Typography>
+            )}
+          </ListItemButton>
+        </Box>
+      </Box>
+    </Drawer>
+  );
+};

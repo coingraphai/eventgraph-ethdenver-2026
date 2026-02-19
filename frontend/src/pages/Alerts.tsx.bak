@@ -1,0 +1,585 @@
+/**
+ * Enhanced Alerts Page
+ * Professional alert management with:
+ * - Glassmorphism design
+ * - Animated elements
+ * - Modern styling
+ */
+
+import React, { useState } from 'react';
+import {
+  Box,
+  Typography,
+  Paper,
+  Button,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+  Switch,
+  Stack,
+  alpha,
+  useTheme,
+  keyframes,
+  Tooltip,
+} from '@mui/material';
+import { 
+  Add, 
+  Delete, 
+  Edit, 
+  NotificationsActive,
+  Notifications,
+  PriceChange,
+  TrendingUp,
+  Psychology,
+  BarChart,
+} from '@mui/icons-material';
+
+// Animations
+const fadeInUp = keyframes`
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+`;
+
+const pulseAnimation = keyframes`
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+`;
+
+interface Alert {
+  id: string;
+  event: string;
+  type: 'price' | 'spread' | 'volume' | 'agent';
+  condition: string;
+  value: string;
+  delivery: string[];
+  enabled: boolean;
+  triggered: number;
+}
+
+const mockAlerts: Alert[] = [
+  {
+    id: '1',
+    event: 'Bitcoin to reach $150k by end of 2026',
+    type: 'price',
+    condition: 'YES crosses above',
+    value: '70%',
+    delivery: ['In-app', 'Email'],
+    enabled: true,
+    triggered: 0,
+  },
+  {
+    id: '2',
+    event: 'Democrats win 2026 midterm elections',
+    type: 'spread',
+    condition: 'Spread widens above',
+    value: '5%',
+    delivery: ['In-app'],
+    enabled: true,
+    triggered: 2,
+  },
+  {
+    id: '3',
+    event: 'Ethereum ETF approval in Q1 2026',
+    type: 'agent',
+    condition: 'Agent signal',
+    value: 'Confidence > 8.0',
+    delivery: ['In-app', 'Email', 'Telegram'],
+    enabled: false,
+    triggered: 1,
+  },
+];
+
+export const Alerts: React.FC = () => {
+  const theme = useTheme();
+  const [alerts, setAlerts] = useState<Alert[]>(mockAlerts);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [editingAlert, setEditingAlert] = useState<Alert | null>(null);
+
+  // Form state
+  const [eventName, setEventName] = useState('');
+  const [alertType, setAlertType] = useState<'price' | 'spread' | 'volume' | 'agent'>('price');
+  const [condition, setCondition] = useState('');
+  const [value, setValue] = useState('');
+  const [deliveryMethods, setDeliveryMethods] = useState<string[]>(['In-app']);
+
+  const handleOpenDialog = (alert?: Alert) => {
+    if (alert) {
+      setEditingAlert(alert);
+      setEventName(alert.event);
+      setAlertType(alert.type);
+      setCondition(alert.condition);
+      setValue(alert.value);
+      setDeliveryMethods(alert.delivery);
+    } else {
+      setEditingAlert(null);
+      setEventName('');
+      setAlertType('price');
+      setCondition('');
+      setValue('');
+      setDeliveryMethods(['In-app']);
+    }
+    setOpenDialog(true);
+  };
+
+  const handleCloseDialog = () => {
+    setOpenDialog(false);
+    setEditingAlert(null);
+  };
+
+  const handleSaveAlert = () => {
+    if (editingAlert) {
+      // Update existing alert
+      setAlerts(alerts.map(a => 
+        a.id === editingAlert.id 
+          ? { ...a, event: eventName, type: alertType, condition, value, delivery: deliveryMethods }
+          : a
+      ));
+    } else {
+      // Create new alert
+      const newAlert: Alert = {
+        id: Date.now().toString(),
+        event: eventName,
+        type: alertType,
+        condition,
+        value,
+        delivery: deliveryMethods,
+        enabled: true,
+        triggered: 0,
+      };
+      setAlerts([...alerts, newAlert]);
+    }
+    handleCloseDialog();
+  };
+
+  const handleDeleteAlert = (id: string) => {
+    setAlerts(alerts.filter(a => a.id !== id));
+  };
+
+  const handleToggleAlert = (id: string) => {
+    setAlerts(alerts.map(a => 
+      a.id === id ? { ...a, enabled: !a.enabled } : a
+    ));
+  };
+
+  const getAlertTypeInfo = (type: string) => {
+    switch (type) {
+      case 'price': return { color: theme.palette.primary.main, icon: PriceChange };
+      case 'spread': return { color: theme.palette.warning.main, icon: TrendingUp };
+      case 'volume': return { color: theme.palette.info.main, icon: BarChart };
+      case 'agent': return { color: theme.palette.success.main, icon: Psychology };
+      default: return { color: theme.palette.text.secondary, icon: Notifications };
+    }
+  };
+
+  return (
+    <Box sx={{ p: { xs: 2, sm: 3 }, minHeight: 'calc(100vh - 56px)' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
+        <Box>
+          <Typography variant="h5" fontWeight={700} sx={{ mb: 0.5 }}>
+            Alerts
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Set up notifications for market events and opportunities
+          </Typography>
+        </Box>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
+          onClick={() => handleOpenDialog()}
+          sx={{
+            px: 2.5,
+            py: 1,
+            fontWeight: 600,
+            textTransform: 'none',
+            borderRadius: 2,
+            background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
+            boxShadow: `0 2px 10px ${alpha(theme.palette.primary.main, 0.3)}`,
+            '&:hover': {
+              boxShadow: `0 4px 16px ${alpha(theme.palette.primary.main, 0.4)}`,
+            },
+          }}
+        >
+          Create Alert
+        </Button>
+      </Box>
+
+      <Paper
+        elevation={0}
+        sx={{
+          background: alpha(theme.palette.background.paper, 0.6),
+          backdropFilter: 'blur(10px)',
+          border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+          borderRadius: 3,
+          overflow: 'hidden',
+          animation: `${fadeInUp} 0.5s ease-out`,
+        }}
+      >
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow sx={{ background: alpha(theme.palette.primary.main, 0.03) }}>
+                <TableCell width={60} sx={{ fontWeight: 600, color: 'text.secondary' }}>Active</TableCell>
+                <TableCell sx={{ fontWeight: 600, color: 'text.secondary' }}>Event</TableCell>
+                <TableCell sx={{ fontWeight: 600, color: 'text.secondary' }}>Type</TableCell>
+                <TableCell sx={{ fontWeight: 600, color: 'text.secondary' }}>Condition</TableCell>
+                <TableCell sx={{ fontWeight: 600, color: 'text.secondary' }}>Value</TableCell>
+                <TableCell sx={{ fontWeight: 600, color: 'text.secondary' }}>Delivery</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 600, color: 'text.secondary' }}>Triggered</TableCell>
+                <TableCell align="center" sx={{ fontWeight: 600, color: 'text.secondary' }}>Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {alerts.map((alert, idx) => {
+                const typeInfo = getAlertTypeInfo(alert.type);
+                return (
+                <TableRow
+                  key={alert.id}
+                  sx={{
+                    opacity: alert.enabled ? 1 : 0.5,
+                    transition: 'all 0.3s ease',
+                    animation: `${fadeInUp} 0.4s ease-out ${idx * 0.05}s both`,
+                    '&:hover': {
+                      background: alpha(theme.palette.primary.main, 0.05),
+                    },
+                  }}
+                >
+                  <TableCell>
+                    <Switch
+                      checked={alert.enabled}
+                      onChange={() => handleToggleAlert(alert.id)}
+                      size="small"
+                      sx={{
+                        '& .MuiSwitch-switchBase.Mui-checked': {
+                          color: theme.palette.success.main,
+                        },
+                        '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
+                          backgroundColor: theme.palette.success.main,
+                        },
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" fontWeight={600}>
+                      {alert.event}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      icon={<typeInfo.icon sx={{ fontSize: '14px !important' }} />}
+                      label={alert.type.toUpperCase()}
+                      size="small"
+                      sx={{
+                        fontWeight: 700,
+                        background: alpha(typeInfo.color, 0.15),
+                        color: typeInfo.color,
+                        border: `1px solid ${alpha(typeInfo.color, 0.3)}`,
+                        '& .MuiChip-icon': { color: typeInfo.color },
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" color="text.secondary">
+                      {alert.condition}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Typography variant="body2" fontWeight={700} fontFamily="monospace">
+                      {alert.value}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <Stack direction="row" spacing={0.5} flexWrap="wrap" gap={0.5}>
+                      {alert.delivery.map((method) => (
+                        <Chip
+                          key={method}
+                          label={method}
+                          size="small"
+                          sx={{
+                            height: 20,
+                            fontSize: '0.7rem',
+                            background: alpha(theme.palette.info.main, 0.1),
+                            border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`,
+                          }}
+                        />
+                      ))}
+                    </Stack>
+                  </TableCell>
+                  <TableCell align="center">
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {alert.triggered > 0 && (
+                        <NotificationsActive 
+                          sx={{ 
+                            mr: 0.5, 
+                            fontSize: 18,
+                            color: 'warning.main',
+                            animation: `${pulseAnimation} 2s ease-in-out infinite`,
+                          }} 
+                        />
+                      )}
+                      <Typography variant="body2" fontWeight={alert.triggered > 0 ? 700 : 400}>
+                        {alert.triggered}
+                      </Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell align="center">
+                    <Stack direction="row" spacing={0.5} justifyContent="center">
+                      <Tooltip title="Edit">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleOpenDialog(alert)}
+                          sx={{
+                            '&:hover': { 
+                              background: alpha(theme.palette.primary.main, 0.15),
+                              color: theme.palette.primary.main,
+                            },
+                          }}
+                        >
+                          <Edit fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Delete">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleDeleteAlert(alert.id)}
+                          sx={{
+                            '&:hover': { 
+                              background: alpha(theme.palette.error.main, 0.15),
+                              color: theme.palette.error.main,
+                            },
+                          }}
+                        >
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
+                  </TableCell>
+                </TableRow>
+              )})}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
+
+      {/* Alert Types Info - Enhanced */}
+      <Paper 
+        elevation={0}
+        sx={{ 
+          p: 3, 
+          mt: 3, 
+          background: alpha(theme.palette.primary.main, 0.03),
+          border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
+          borderRadius: 3,
+          animation: `${fadeInUp} 0.5s ease-out 0.2s both`,
+        }}
+      >
+        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 2 }}>
+          <Notifications sx={{ color: 'primary.main' }} />
+          <Typography variant="h6" fontWeight={700}>
+            Alert Types
+          </Typography>
+        </Stack>
+        <Stack spacing={2}>
+          {[
+            { type: 'PRICE', icon: PriceChange, color: theme.palette.primary.main, title: 'Price Crosses', desc: 'Get notified when YES/NO price crosses a specific threshold' },
+            { type: 'SPREAD', icon: TrendingUp, color: theme.palette.warning.main, title: 'Spread Widens', desc: 'Alert when bid-ask spread exceeds your target' },
+            { type: 'VOLUME', icon: BarChart, color: theme.palette.info.main, title: 'Volume Spike', desc: 'Detect unusual trading activity and volume surges' },
+            { type: 'AGENT', icon: Psychology, color: theme.palette.success.main, title: 'Agent Signal', desc: 'Receive AI agent trade opportunities matching your criteria' },
+          ].map((item) => (
+            <Box 
+              key={item.type}
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                background: alpha(item.color, 0.05),
+                border: `1px solid ${alpha(item.color, 0.1)}`,
+                transition: 'all 0.2s ease',
+                '&:hover': {
+                  background: alpha(item.color, 0.08),
+                  borderColor: alpha(item.color, 0.2),
+                },
+              }}
+            >
+              <Stack direction="row" alignItems="center" spacing={1.5}>
+                <Box sx={{ p: 0.75, borderRadius: 1.5, background: alpha(item.color, 0.15) }}>
+                  <item.icon sx={{ fontSize: 18, color: item.color }} />
+                </Box>
+                <Box>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Chip 
+                      label={item.type} 
+                      size="small" 
+                      sx={{ 
+                        height: 20, 
+                        fontSize: '0.65rem', 
+                        fontWeight: 700,
+                        background: alpha(item.color, 0.15),
+                        color: item.color,
+                      }} 
+                    />
+                    <Typography variant="subtitle2" fontWeight={600}>
+                      {item.title}
+                    </Typography>
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    {item.desc}
+                  </Typography>
+                </Box>
+              </Stack>
+            </Box>
+          ))}
+        </Stack>
+      </Paper>
+
+      {/* Create/Edit Alert Dialog - Enhanced */}
+      <Dialog 
+        open={openDialog} 
+        onClose={handleCloseDialog} 
+        maxWidth="sm" 
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            background: theme.palette.background.paper,
+            border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+          },
+        }}
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            {editingAlert ? <Edit sx={{ color: 'primary.main' }} /> : <Add sx={{ color: 'primary.main' }} />}
+            <Typography variant="h6" fontWeight={700}>
+              {editingAlert ? 'Edit Alert' : 'Create Alert'}
+            </Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={3} sx={{ mt: 2 }}>
+            <TextField
+              label="Event Name"
+              value={eventName}
+              onChange={(e) => setEventName(e.target.value)}
+              fullWidth
+              placeholder="e.g., Bitcoin to reach $150k by end of 2026"
+            />
+
+            <FormControl fullWidth>
+              <InputLabel>Alert Type</InputLabel>
+              <Select
+                value={alertType}
+                label="Alert Type"
+                onChange={(e) => setAlertType(e.target.value as any)}
+              >
+                <MenuItem value="price">
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <PriceChange sx={{ fontSize: 18, color: 'primary.main' }} />
+                    <span>Price Crosses</span>
+                  </Stack>
+                </MenuItem>
+                <MenuItem value="spread">
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <TrendingUp sx={{ fontSize: 18, color: 'warning.main' }} />
+                    <span>Spread Widens</span>
+                  </Stack>
+                </MenuItem>
+                <MenuItem value="volume">
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <BarChart sx={{ fontSize: 18, color: 'info.main' }} />
+                    <span>Volume Spike</span>
+                  </Stack>
+                </MenuItem>
+                <MenuItem value="agent">
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <Psychology sx={{ fontSize: 18, color: 'success.main' }} />
+                    <span>Agent Signal</span>
+                  </Stack>
+                </MenuItem>
+              </Select>
+            </FormControl>
+
+            <TextField
+              label="Condition"
+              value={condition}
+              onChange={(e) => setCondition(e.target.value)}
+              fullWidth
+              placeholder="e.g., YES crosses above"
+            />
+
+            <TextField
+              label="Value"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              fullWidth
+              placeholder="e.g., 70%"
+            />
+
+            <FormControl fullWidth>
+              <InputLabel>Delivery Methods</InputLabel>
+              <Select
+                multiple
+                value={deliveryMethods}
+                label="Delivery Methods"
+                onChange={(e) => setDeliveryMethods(e.target.value as string[])}
+                renderValue={(selected) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {(selected as string[]).map((value) => (
+                      <Chip 
+                        key={value} 
+                        label={value} 
+                        size="small"
+                        sx={{
+                          background: alpha(theme.palette.primary.main, 0.1),
+                          border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+                        }}
+                      />
+                    ))}
+                  </Box>
+                )}
+              >
+                <MenuItem value="In-app">In-app</MenuItem>
+                <MenuItem value="Email">Email</MenuItem>
+                <MenuItem value="Telegram">Telegram</MenuItem>
+              </Select>
+            </FormControl>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button 
+            onClick={handleCloseDialog}
+            sx={{ 
+              px: 3,
+              borderColor: alpha(theme.palette.divider, 0.3),
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSaveAlert} 
+            variant="contained"
+            sx={{
+              px: 3,
+              fontWeight: 600,
+              background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
+              boxShadow: `0 4px 14px ${alpha(theme.palette.primary.main, 0.4)}`,
+            }}
+          >
+            {editingAlert ? 'Save Changes' : 'Create Alert'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
+  );
+};

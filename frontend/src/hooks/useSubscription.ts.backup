@@ -1,0 +1,120 @@
+import { useState, useEffect, useCallback } from 'react';
+import { useAccount } from 'wagmi';
+import { useSessionId } from './useSessionId';
+import {
+  getPaymentConfig,
+  getQuestionLimitStatus,
+  checkQuestionLimit as apiCheckQuestionLimit,
+  PaymentConfig,
+} from '../services/paymentApi';
+
+interface SubscriptionStatus {
+  tier: 'anonymous' | 'free_tier' | 'premium';
+  is_premium: boolean;
+  premium_expires_at: string | null;
+  questions_used: number;
+  questions_remaining: number;
+  limit: number;
+  can_ask: boolean;
+  needs_wallet: boolean;
+  needs_upgrade: boolean;
+}
+
+export const useSubscription = () => {
+  const { address, isConnected } = useAccount();
+  const sessionId = useSessionId();
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
+  const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [showConnectWalletPrompt, setShowConnectWalletPrompt] = useState(false);
+
+  // Load payment configuration
+  useEffect(() => {
+    loadPaymentConfig();
+  }, []);
+
+  // Load subscription status when wallet or session changes
+  useEffect(() => {
+    loadSubscriptionStatus();
+  }, [address, sessionId]);
+
+  const loadPaymentConfig = async () => {
+    try {
+      const config = await getPaymentConfig();
+      setPaymentConfig(config);
+    } catch (error) {
+      console.error('Failed to load payment config:', error);
+    }
+  };
+
+  const loadSubscriptionStatus = async () => {
+    if (!address && !sessionId) return;
+
+    setLoading(true);
+    try {
+      const status = await getQuestionLimitStatus(address, sessionId);
+      setSubscriptionStatus({
+        tier: status.tier,
+        is_premium: status.is_premium,
+        premium_expires_at: status.premium_expires_at || null,
+        questions_used: status.questions_used,
+        questions_remaining: status.questions_remaining,
+        limit: status.limit,
+        can_ask: status.can_ask,
+        needs_wallet: status.needs_wallet,
+        needs_upgrade: status.needs_upgrade,
+      });
+    } catch (error) {
+      console.error('Failed to load subscription status:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkQuestionLimit = useCallback(async (): Promise<boolean> => {
+    try {
+      const result = await apiCheckQuestionLimit(address, sessionId);
+
+      if (result.needs_wallet) {
+        // Show connect wallet prompt for anonymous users who hit limit
+        setShowConnectWalletPrompt(true);
+        return false;
+      }
+
+      if (result.needs_upgrade) {
+        // Show upgrade modal for free tier users who hit limit
+        setShowUpgradeModal(true);
+        return false;
+      }
+
+      if (!result.can_ask) {
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Failed to check question limit:', error);
+      // Allow questions to proceed if the payment API is unavailable
+      // This ensures the app remains functional even with backend issues
+      return true;
+    }
+  }, [address, sessionId]);
+
+  const refreshStatus = useCallback(() => {
+    loadSubscriptionStatus();
+  }, [address, sessionId]);
+
+  return {
+    subscriptionStatus,
+    paymentConfig,
+    loading,
+    showUpgradeModal,
+    setShowUpgradeModal,
+    showConnectWalletPrompt,
+    setShowConnectWalletPrompt,
+    checkQuestionLimit,
+    refreshStatus,
+    isConnected,
+  };
+};

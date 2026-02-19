@@ -1,0 +1,69 @@
+import React from 'react';
+import { WagmiProvider } from 'wagmi';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { RainbowKitProvider, darkTheme, lightTheme } from '@rainbow-me/rainbowkit';
+import { config } from './config';
+import '@rainbow-me/rainbowkit/styles.css';
+
+// Create React Query client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
+
+interface WalletProviderProps {
+  children: React.ReactNode;
+  theme?: 'light' | 'dark';
+}
+
+/**
+ * Wallet Provider - Browser Extension Wallet Support
+ * 
+ * Supported Wallets (Browser Extensions):
+ * • MetaMask - Browser extension
+ * • Coinbase Wallet - Browser extension
+ * • OKX Wallet - Browser extension
+ * • Trust Wallet - Browser extension (if installed)
+ * • Binance Wallet - Browser extension (if installed)
+ * • Any other injected wallet
+ * 
+ * DISABLED (uncomment for future use):
+ * • Phantom - Browser extension (EVM mode)
+ */
+export const WalletProvider: React.FC<WalletProviderProps> = ({ children, theme = 'dark' }) => {
+  return (
+    <WagmiProvider config={config}>
+      <QueryClientProvider client={queryClient}>
+        <RainbowKitProvider
+          theme={theme === 'dark' ? darkTheme({
+            accentColor: '#BBD977',
+            accentColorForeground: 'white',
+            borderRadius: 'medium',
+            fontStack: 'system',
+          }) : lightTheme({
+            accentColor: '#BBD977',
+            accentColorForeground: 'white',
+            borderRadius: 'medium',
+            fontStack: 'system',
+          })}
+          showRecentTransactions={true}
+          appInfo={{
+            appName: 'CoinGraph AI',
+            disclaimer: ({ Text, Link }: { Text: React.ComponentType<any>; Link: React.ComponentType<any> }) => (
+              <Text>
+                By connecting your wallet, you agree to our{' '}
+                <Link href="https://coingraph.ai/terms">Terms of Service</Link>
+              </Text>
+            ),
+          }}
+        >
+          {children}
+        </RainbowKitProvider>
+      </QueryClientProvider>
+    </WagmiProvider>
+  );
+};

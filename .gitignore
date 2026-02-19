@@ -1,0 +1,79 @@
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*_secret*
+*_keys/
+production_config/
+credentials/
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.Python
+.venv/
+venv/
+ENV/
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+.eggs/
+*.log
+*.out
+nohup.out
+*_output.log
+*_progress.log
+*_sync.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Hackathon - No production data
+production_keys/
+real_api_keys/
+prod_database_backups/
+analytics_data/
+
+# Keep example files
+!.env.example
+!config.example.py
+!example_*.py
+
+# Compiled contracts
+artifacts/
+cache/
+typechain/
+typechain-types/
+
+# Hardhat
+coverage.json
+coverage/

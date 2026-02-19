@@ -1,0 +1,301 @@
+# Limitless Exchange API Endpoints Configuration
+# This file defines all discovered endpoints and their ingestion strategies
+
+source: limitless_exchange
+base_url: https://api.limitless.exchange
+version: "1.0"
+
+# Global settings
+defaults:
+  rate_limit_rps: 10
+  timeout_seconds: 30
+  max_retries: 5
+  page_size: 100
+  
+# Endpoint definitions
+endpoints:
+  # =============================================================================
+  # PUBLIC ENDPOINTS - No authentication required
+  # =============================================================================
+  
+  health:
+    path: /
+    method: GET
+    description: API health check
+    auth_required: false
+    pagination: none
+    backfill_strategy: snapshot
+    incremental_strategy: snapshot
+    snapshot_interval_seconds: 60
+    priority: 1
+    entity_type: health_status
+    
+  categories:
+    path: /categories
+    method: GET
+    description: List all market categories
+    auth_required: false
+    pagination: none
+    backfill_strategy: snapshot
+    incremental_strategy: snapshot
+    snapshot_interval_seconds: 3600  # Hourly - rarely changes
+    priority: 2
+    entity_type: category
+    
+  tokens:
+    path: /tokens
+    method: GET
+    description: List all supported tokens/collateral
+    auth_required: false
+    pagination: none
+    backfill_strategy: snapshot
+    incremental_strategy: snapshot
+    snapshot_interval_seconds: 3600  # Hourly - rarely changes
+    priority: 2
+    entity_type: token
+    
+  markets_active:
+    path: /markets/active
+    method: GET
+    description: List all active markets with pagination
+    auth_required: false
+    pagination:
+      type: page_limit
+      page_param: page
+      limit_param: limit
+      default_limit: 100
+      response_data_key: data
+      has_more_key: null  # Infer from response length
+    backfill_strategy: exhaust_pages
+    incremental_strategy: time_based
+    incremental_field: updatedAt
+    priority: 10
+    entity_type: market
+    extract_nested:
+      - collateralToken
+      - creator
+      - venue
+      - metadata
+      - settings
+      - priceOracleMetadata
+      
+  markets_search:
+    path: /markets/search
+    method: GET
+    description: Search markets by query
+    auth_required: false
+    params:
+      query:
+        type: string
+        required: true
+    pagination: none
+    backfill_strategy: none  # Not suitable for backfill
+    incremental_strategy: none
+    priority: 5
+    entity_type: market
+    
+  market_detail:
+    path: /markets/{slug}
+    method: GET
+    description: Get single market details
+    auth_required: false
+    path_params:
+      slug:
+        type: string
+        description: Market slug identifier
+        source: markets_active.slug
+    pagination: none
+    backfill_strategy: iterate_parent
+    parent_endpoint: markets_active
+    incremental_strategy: time_based
+    incremental_field: updatedAt
+    priority: 8
+    entity_type: market
+    
+  market_orderbook:
+    path: /markets/{slug}/orderbook
+    method: GET
+    description: Get market orderbook
+    auth_required: false
+    path_params:
+      slug:
+        type: string
+        source: markets_active.slug
+    pagination: none
+    backfill_strategy: iterate_parent
+    parent_endpoint: markets_active
+    incremental_strategy: snapshot
+    snapshot_interval_seconds: 60  # Every minute for active markets
+    priority: 9
+    entity_type: orderbook_snapshot
+    high_frequency: true
+    
+  leaderboard_day:
+    path: /leaderboard/day
+    method: GET
+    description: Daily leaderboard
+    auth_required: false
+    pagination:
+      type: page_limit
+      page_param: page
+      limit_param: limit
+      default_limit: 100
+      response_data_key: data
+    backfill_strategy: exhaust_pages
+    incremental_strategy: snapshot
+    snapshot_interval_seconds: 300  # Every 5 minutes
+    priority: 6
+    entity_type: leaderboard_entry
+    entity_meta:
+      period: day
+      
+  leaderboard_week:
+    path: /leaderboard/week
+    method: GET
+    description: Weekly leaderboard
+    auth_required: false
+    pagination:
+      type: page_limit
+      page_param: page
+      limit_param: limit
+      default_limit: 100
+      response_data_key: data
+    backfill_strategy: exhaust_pages
+    incremental_strategy: snapshot
+    snapshot_interval_seconds: 300
+    priority: 6
+    entity_type: leaderboard_entry
+    entity_meta:
+      period: week
+      
+  leaderboard_month:
+    path: /leaderboard/month
+    method: GET
+    description: Monthly leaderboard
+    auth_required: false
+    pagination:
+      type: page_limit
+      page_param: page
+      limit_param: limit
+      default_limit: 100
+      response_data_key: data
+    backfill_strategy: exhaust_pages
+    incremental_strategy: snapshot
+    snapshot_interval_seconds: 300
+    priority: 6
+    entity_type: leaderboard_entry
+    entity_meta:
+      period: month
+
+  # =============================================================================
+  # PRIVATE ENDPOINTS - Authentication required
+  # =============================================================================
+  
+  markets_all:
+    path: /markets/all
+    method: GET
+    description: List all markets (including inactive) - requires auth
+    auth_required: true
+    pagination:
+      type: page_limit
+      page_param: page
+      limit_param: limit
+      default_limit: 100
+      response_data_key: data
+    backfill_strategy: exhaust_pages
+    incremental_strategy: time_based
+    incremental_field: updatedAt
+    priority: 7
+    entity_type: market
+    
+# Entity schemas for silver layer normalization
+entity_schemas:
+  market:
+    primary_key: [id]
+    natural_key: [slug]
+    timestamp_fields: [createdAt, updatedAt, expirationTimestamp]
+    fields:
+      id: integer
+      slug: string
+      title: string
+      description: text
+      status: string
+      expired: boolean
+      tradeType: string
+      marketType: string
+      conditionId: string
+      volume: string
+      volumeFormatted: string
+      createdAt: timestamp
+      updatedAt: timestamp
+      expirationDate: string
+      expirationTimestamp: bigint
+      winningOutcomeIndex: integer
+      isRewardable: boolean
+      priorityIndex: integer
+      # Nested objects stored as JSONB
+      tokens: jsonb
+      prices: jsonb
+      tradePrices: jsonb
+      collateralToken: jsonb
+      creator: jsonb
+      venue: jsonb
+      metadata: jsonb
+      settings: jsonb
+      priceOracleMetadata: jsonb
+      categories: jsonb
+      tags: jsonb
+      
+  category:
+    primary_key: [id]
+    fields:
+      id: integer
+      name: string
+      priority: integer
+      metadata: jsonb
+      
+  token:
+    primary_key: [id]
+    natural_key: [address]
+    fields:
+      id: integer
+      name: string
+      symbol: string
+      decimals: integer
+      priceOracleId: string
+      address: string
+      logoUrl: string
+      
+  orderbook_snapshot:
+    primary_key: [market_slug, fetched_at]
+    fields:
+      market_slug: string
+      tokenId: string
+      bids: jsonb
+      asks: jsonb
+      midpoint: decimal
+      adjustedMidpoint: decimal
+      lastTradePrice: decimal
+      maxSpread: string
+      minSize: string
+      fetched_at: timestamp
+      
+  leaderboard_entry:
+    primary_key: [period, account, fetched_at]
+    fields:
+      period: string
+      account: string
+      displayName: string
+      rankName: string
+      points: string
+      leaderboardPosition: string
+      pfpUrl: string
+      totalVolume: decimal
+      fetched_at: timestamp
+      
+  health_status:
+    primary_key: [fetched_at]
+    fields:
+      status: string
+      timestamp: timestamp
+      fetched_at: timestamp

@@ -1,0 +1,14 @@
+<svg width="175" height="48" viewBox="0 0 175 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Icon/Symbol -->
+  <circle cx="24" cy="24" r="20" stroke="#BBD977" stroke-width="2" fill="none"/>
+  <path d="M24 8 L24 24 L36 24" stroke="#BBD977" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="24" cy="24" r="3" fill="#BBD977"/>
+  
+  <!-- Text -->
+  <text x="54" y="20" font-family="Outfit, sans-serif" font-size="16" font-weight="600" fill="#FFFFFF">
+    CoinGraph
+  </text>
+  <text x="54" y="36" font-family="Outfit, sans-serif" font-size="12" font-weight="400" fill="#BBD977">
+    AI Copilot
+  </text>
+</svg>

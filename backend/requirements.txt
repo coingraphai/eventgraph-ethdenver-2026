@@ -1,0 +1,53 @@
+# CoinGraph AI - Simplified Dependencies
+# Core Framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+starlette>=0.36.0
+
+# Database (PostgreSQL)
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.9
+alembic>=1.13.0
+
+# Anthropic Claude (AI)
+anthropic>=0.75.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# HTTP Clients
+httpx>=0.27.0
+aiohttp>=3.9.0
+requests>=2.31.0
+
+# Pydantic (validation)
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# Charting
+plotly>=5.18.0
+kaleido>=0.2.1
+
+# Fuzzy Matching
+rapidfuzz>=3.5.0
+
+# Exchange Data
+ccxt>=4.0.0
+
+# Utilities
+orjson>=3.9.0
+
+# MCP (Model Context Protocol)
+mcp>=1.0.0
+sse-starlette>=2.0.0
+
+# Dome API SDK (Prediction Markets)
+dome-api-sdk>=0.1.7
+
+# Redis (optional - for persistent caching)
+redis>=5.0.0

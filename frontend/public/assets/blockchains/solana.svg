@@ -1,0 +1,20 @@
+<svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="20" cy="20" r="18" fill="#14F195"/>
+  <path d="M15 12L20 18L25 12L20 8L15 12Z" fill="url(#solana1)"/>
+  <path d="M15 20L20 26L25 20L20 16L15 20Z" fill="url(#solana2)"/>
+  <path d="M15 28L20 34L25 28L20 24L15 28Z" fill="url(#solana3)"/>
+  <defs>
+    <linearGradient id="solana1" x1="15" y1="12" x2="25" y2="12">
+      <stop stop-color="#00FFA3"/>
+      <stop offset="1" stop-color="#DC1FFF"/>
+    </linearGradient>
+    <linearGradient id="solana2" x1="15" y1="20" x2="25" y2="20">
+      <stop stop-color="#00FFA3"/>
+      <stop offset="1" stop-color="#DC1FFF"/>
+    </linearGradient>
+    <linearGradient id="solana3" x1="15" y1="28" x2="25" y2="28">
+      <stop stop-color="#00FFA3"/>
+      <stop offset="1" stop-color="#DC1FFF"/>
+    </linearGradient>
+  </defs>
+</svg>
