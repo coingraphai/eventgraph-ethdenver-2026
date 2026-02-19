@@ -89,6 +89,8 @@ class UnifiedMarket(BaseModel):
     category: str
     tags: List[str] = []
     last_price: Optional[float] = None
+    event_group: Optional[str] = None  # Event grouping: event_slug (poly), event_ticker (kalshi), slug-prefix (limitless)
+    event_group_label: Optional[str] = None  # Human-readable event name
     extra: Dict[str, Any] = {}
 
 
@@ -663,27 +665,47 @@ async def fetch_all_from_silver_db(search=None, min_volume=None) -> tuple:
         extra = dict(row.extra_data) if row.extra_data else {}
         yes_p = float(row.yes_price) if row.yes_price is not None else None
 
+        event_group = None
+        event_group_label = None
+
         if source == "polymarket":
             platform_key = "poly"
+            event_slug = extra.get("event_slug") or row.slug or row.source_market_id
             extra.update({
                 "condition_id": row.condition_id or "",
                 "market_slug": row.slug or row.source_market_id,
-                "event_slug": extra.get("event_slug") or row.slug or row.source_market_id,
+                "event_slug": event_slug,
                 "image": row.image_url,
             })
+            event_group = event_slug
+            # Make a readable label: replace dashes with spaces, title case
+            event_group_label = event_slug.replace("-", " ").title() if event_slug else None
         elif source == "kalshi":
             platform_key = "kalshi"
+            event_ticker = extra.get("event_ticker") or row.source_market_id.rsplit("-", 1)[0]
             extra.update({
                 "market_ticker": row.source_market_id,
-                "event_ticker": extra.get("event_ticker") or row.source_market_id.rsplit("-", 1)[0],
+                "event_ticker": event_ticker,
             })
+            event_group = event_ticker
+            event_group_label = event_ticker  # e.g. KXNBA-26
         elif source == "limitless":
             platform_key = "limitless"
+            slug = row.slug or row.source_market_id
             extra.update({
-                "market_slug": row.slug or row.source_market_id,
+                "market_slug": slug,
                 "image": row.image_url,
                 "liquidity": float(row.liquidity) if row.liquidity else 0,
             })
+            # Group by asset name extracted from slug (e.g. "dollarbtc" → "BTC")
+            if slug:
+                parts = slug.split("-")
+                event_group = parts[0] if parts else slug
+                # Clean up: dollar prefix → asset name
+                g = event_group.replace("dollar", "").upper()
+                event_group_label = g if g else event_group
+            else:
+                event_group = None
         else:
             platform_key = "opiniontrade"
             extra.update({"market_slug": row.slug or row.source_market_id})
@@ -711,6 +733,8 @@ async def fetch_all_from_silver_db(search=None, min_volume=None) -> tuple:
                 category=row.category_name or categorize_market(row.title, list(row.tags) if row.tags else []),
                 tags=list(row.tags) if row.tags else [],
                 last_price=yes_p,
+                event_group=event_group,
+                event_group_label=event_group_label,
                 extra=extra,
             )
             all_markets.append(market)

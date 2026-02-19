@@ -658,6 +658,24 @@ export const Screener: React.FC = () => {
                           >
                             {market.title}
                           </Typography>
+                          {market.event_group_label && (
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: 'text.secondary',
+                                fontSize: '0.65rem',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                maxWidth: 220,
+                                display: 'block',
+                                mt: 0.2,
+                              }}
+                              title={market.event_group_label}
+                            >
+                              📂 {market.event_group_label}
+                            </Typography>
+                          )}
                           {(market.volume_24h_usd || 0) > 100000 && (
                             <Chip
                               icon={<LocalFireDepartment sx={{ fontSize: 12 }} />}
