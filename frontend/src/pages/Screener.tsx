@@ -698,81 +698,22 @@ export const Screener: React.FC = () => {
                         },
                       }}
                     >
-                      {/* Card image or color bar */}
-                      {market.extra?.image ? (
-                        <Box sx={{ position: 'relative', height: 110, overflow: 'hidden' }}>
-                          <Box
-                            component="img"
-                            src={market.extra.image}
-                            sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          />
-                          {/* Gradient overlay */}
-                          <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.7) 100%)' }} />
-                          {/* Platform chip overlaid */}
-                          <Box sx={{ position: 'absolute', top: 8, left: 8 }}>
-                            <Chip
-                              label={PLATFORM_NAMES[market.platform] || market.platform}
-                              size="small"
-                              sx={{ backgroundColor: PLATFORM_COLORS[market.platform]?.bg || 'rgba(0,0,0,0.5)', color: PLATFORM_COLORS[market.platform]?.primary, fontWeight: 700, fontSize: '0.65rem', backdropFilter: 'blur(8px)' }}
-                            />
-                          </Box>
-                          {/* Watch star overlaid top-right */}
-                          <Box sx={{ position: 'absolute', top: 4, right: 4 }}>
-                            <IconButton
-                              size="small"
-                              onClick={e => { e.stopPropagation(); toggleWatchlist(`${market.platform}-${market.id}`); }}
-                              sx={{ color: isWatched ? '#FCD34D' : 'rgba(255,255,255,0.7)', '&:hover': { color: '#FCD34D' } }}
-                            >
-                              {isWatched ? <Star sx={{ fontSize: 18 }} /> : <StarBorder sx={{ fontSize: 18 }} />}
-                            </IconButton>
-                          </Box>
-                          {/* 24h change badge overlaid bottom-right */}
-                          {hasChange && (
-                            <Box sx={{ position: 'absolute', bottom: 8, right: 8 }}>
-                              <Chip
-                                icon={market.price_change_pct_24h! > 0 ? <TrendingUp sx={{ fontSize: 12 }} /> : <TrendingDown sx={{ fontSize: 12 }} />}
-                                label={`${market.price_change_pct_24h! > 0 ? '+' : ''}${market.price_change_pct_24h!.toFixed(1)}%`}
-                                size="small"
-                                sx={{
-                                  height: 20, fontSize: '0.65rem', fontWeight: 700,
-                                  backgroundColor: market.price_change_pct_24h! > 0 ? alpha('#22C55E', 0.85) : alpha('#EF4444', 0.85),
-                                  color: '#fff',
-                                  '& .MuiChip-icon': { color: '#fff' },
-                                  backdropFilter: 'blur(4px)',
-                                }}
-                              />
-                            </Box>
-                          )}
-                        </Box>
-                      ) : (
-                        /* No image — colored header bar */
-                        <Box sx={{
-                          height: 6,
-                          background: `linear-gradient(90deg, ${PLATFORM_COLORS[market.platform]?.primary || '#8B5CF6'}, ${alpha(PLATFORM_COLORS[market.platform]?.primary || '#8B5CF6', 0.3)})`,
-                        }} />
-                      )}
+                      {/* Thin platform color bar — always */}
+                      <Box sx={{
+                        height: 5,
+                        background: `linear-gradient(90deg, ${PLATFORM_COLORS[market.platform]?.primary || '#8B5CF6'}, ${alpha(PLATFORM_COLORS[market.platform]?.primary || '#8B5CF6', 0.25)})`,
+                      }} />
 
                       {/* Card body */}
                       <Box sx={{ p: 1.5 }}>
-                        {/* Title */}
-                        <Typography
-                          variant="body2"
-                          sx={{ fontWeight: 600, mb: 0.5, lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
-                        >
-                          {market.title}
-                        </Typography>
-
-                        {/* Event group label */}
-                        {market.event_group_label && (
-                          <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 0.75, fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            📂 {market.event_group_label}
-                          </Typography>
-                        )}
-
-                        {/* No image: platform + 24h change row */}
-                        {!market.extra?.image && (
-                          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 0.75 }}>
-                            <Chip label={PLATFORM_NAMES[market.platform] || market.platform} size="small" sx={{ backgroundColor: PLATFORM_COLORS[market.platform]?.bg, color: PLATFORM_COLORS[market.platform]?.primary, fontWeight: 600, fontSize: '0.65rem', height: 18 }} />
+                        {/* Header: platform chip + 24h badge + star */}
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                          <Chip
+                            label={PLATFORM_NAMES[market.platform] || market.platform}
+                            size="small"
+                            sx={{ backgroundColor: PLATFORM_COLORS[market.platform]?.bg, color: PLATFORM_COLORS[market.platform]?.primary, fontWeight: 700, fontSize: '0.65rem', height: 18 }}
+                          />
+                          <Stack direction="row" spacing={0.5} alignItems="center">
                             {hasChange && (
                               <Chip
                                 icon={market.price_change_pct_24h! > 0 ? <TrendingUp sx={{ fontSize: 10 }} /> : <TrendingDown sx={{ fontSize: 10 }} />}
@@ -781,8 +722,44 @@ export const Screener: React.FC = () => {
                                 sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700, backgroundColor: market.price_change_pct_24h! > 0 ? alpha('#22C55E', 0.15) : alpha('#EF4444', 0.15), color: market.price_change_pct_24h! > 0 ? '#22C55E' : '#EF4444', '& .MuiChip-icon': { color: market.price_change_pct_24h! > 0 ? '#22C55E' : '#EF4444' } }}
                               />
                             )}
+                            <IconButton
+                              size="small"
+                              onClick={e => { e.stopPropagation(); toggleWatchlist(`${market.platform}-${market.id}`); }}
+                              sx={{ p: 0.25, color: isWatched ? '#FCD34D' : 'text.disabled', '&:hover': { color: '#FCD34D' } }}
+                            >
+                              {isWatched ? <Star sx={{ fontSize: 15 }} /> : <StarBorder sx={{ fontSize: 15 }} />}
+                            </IconButton>
                           </Stack>
-                        )}
+                        </Stack>
+
+                        {/* Icon + text: event label primary, market title secondary */}
+                        <Stack direction="row" spacing={1.25} alignItems="flex-start" sx={{ mb: 1 }}>
+                          {market.extra?.image && (
+                            <Box
+                              component="img"
+                              src={market.extra.image}
+                              sx={{ width: 42, height: 42, borderRadius: 1.5, objectFit: 'cover', flexShrink: 0, border: `1px solid ${alpha(theme.palette.divider, 0.15)}` }}
+                            />
+                          )}
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
+                            <Typography
+                              variant="body2"
+                              sx={{ fontWeight: 600, lineHeight: 1.35, mb: 0.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                              title={market.event_group_label || market.title}
+                            >
+                              {market.event_group_label || market.title}
+                            </Typography>
+                            {market.event_group_label && (
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: 1.4, fontSize: '0.70rem' }}
+                              >
+                                {market.title}
+                              </Typography>
+                            )}
+                          </Box>
+                        </Stack>
 
                         {/* Category + Volume row */}
                         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
@@ -986,31 +963,32 @@ export const Screener: React.FC = () => {
                           <Typography 
                             variant="body2" 
                             sx={{ 
-                              fontWeight: 500,
+                              fontWeight: 600,
                               maxWidth: 400,
                               overflow: 'hidden',
                               textOverflow: 'ellipsis',
                               whiteSpace: 'nowrap',
                             }}
+                            title={market.event_group_label || market.title}
                           >
-                            {market.title}
+                            {market.event_group_label || market.title}
                           </Typography>
                           {market.event_group_label && (
                             <Typography
                               variant="caption"
                               sx={{
                                 color: 'text.secondary',
-                                fontSize: '0.65rem',
+                                fontSize: '0.70rem',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
-                                maxWidth: 220,
+                                maxWidth: 320,
                                 display: 'block',
-                                mt: 0.2,
+                                mt: 0.15,
                               }}
-                              title={market.event_group_label}
+                              title={market.title}
                             >
-                              📂 {market.event_group_label}
+                              {market.title}
                             </Typography>
                           )}
                           {(market.volume_24h_usd || 0) > 100000 && (
