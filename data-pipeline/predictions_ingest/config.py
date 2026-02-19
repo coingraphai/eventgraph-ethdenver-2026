@@ -180,6 +180,7 @@ class Settings(BaseSettings):
     # Trades fetching configuration (filtered to reduce data volume)
     trades_top_n_markets: int = Field(default=100, ge=0, le=500, description="Fetch trades for top N Polymarket markets by volume (0=skip)")
     kalshi_trades_top_n_markets: int = Field(default=50, ge=0, le=500, description="Fetch trades for top N Kalshi markets by volume (0=skip, default:50 - Kalshi has fewer trades)")
+    limitless_trades_top_n_markets: int = Field(default=30, ge=0, le=200, description="Fetch trades for top N Limitless markets by volume (0=skip, default:30 - small platform)")
     trades_since_hours: int = Field(default=24, ge=1, le=168, description="Fetch trades from last N hours")
     trades_min_usd: int = Field(default=1000, ge=0, description="Minimum trade value in USD (0=all trades)")
     trades_max_per_market: int = Field(default=1000, ge=100, le=10000, description="Maximum trades to fetch per market (limits API calls)")

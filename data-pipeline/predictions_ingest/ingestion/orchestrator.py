@@ -1069,9 +1069,45 @@ class LimitlessIngester(SourceIngester):
                 except Exception as e:
                     logger.debug("Failed to fetch orderbook", slug=market.slug)
             
+            # Fetch recent trades for top Limitless markets
+            limitless_trades_top_n = getattr(self.settings, 'limitless_trades_top_n_markets', 30)
+            if limitless_trades_top_n > 0:
+                trade_markets = sorted(
+                    [m for m in markets if m.volume_24h],
+                    key=lambda x: x.volume_24h or 0,
+                    reverse=True
+                )[:limitless_trades_top_n] or markets[:limitless_trades_top_n]
+                
+                all_trades = []
+                trades_fetched = 0
+                for market in trade_markets:
+                    try:
+                        slug = market.slug or market.source_market_id
+                        raw_events = await self.client.fetch_all_market_events(slug, max_records=500)
+                        if raw_events:
+                            await self.bronze_writer.write_batch(
+                                records=raw_events,
+                                source=self.SOURCE,
+                                endpoint=f"/markets/{slug}/events",
+                                run_id=run_id,
+                            )
+                            for raw_trade in raw_events:
+                                try:
+                                    trade = self.client.normalize_trade(raw_trade, market.source_market_id)
+                                    all_trades.append(trade)
+                                except Exception:
+                                    pass
+                            trades_fetched += len(raw_events)
+                    except Exception as e:
+                        logger.debug("Failed to fetch Limitless trades", slug=market.slug, error=str(e))
+                
+                if all_trades:
+                    trades_inserted = await self.silver_writer.insert_trades(all_trades)
+                    logger.info("Fetched Limitless trades (static)", fetched=trades_fetched, inserted=str(trades_inserted))
+            
             result.success = True
             logger.info("Limitless static load completed", markets=result.markets_upserted, prices=result.prices_fetched)
-            
+        
         except Exception as e:
             logger.error("Limitless static load failed", error=str(e))
             result.error = str(e)
@@ -1135,9 +1171,45 @@ class LimitlessIngester(SourceIngester):
                 except Exception as e:
                     logger.debug("Failed to fetch prices", slug=market.slug)
             
+            # Fetch recent trades for top Limitless markets
+            limitless_trades_top_n = getattr(self.settings, 'limitless_trades_top_n_markets', 30)
+            if limitless_trades_top_n > 0:
+                trade_markets = sorted(
+                    [m for m in markets if m.volume_24h],
+                    key=lambda x: x.volume_24h or 0,
+                    reverse=True
+                )[:limitless_trades_top_n] or markets[:limitless_trades_top_n]
+                
+                all_trades = []
+                trades_fetched = 0
+                for market in trade_markets:
+                    try:
+                        slug = market.slug or market.source_market_id
+                        raw_events = await self.client.fetch_all_market_events(slug, max_records=200)
+                        if raw_events:
+                            await self.bronze_writer.write_batch(
+                                records=raw_events,
+                                source=self.SOURCE,
+                                endpoint=f"/markets/{slug}/events",
+                                run_id=run_id,
+                            )
+                            for raw_trade in raw_events:
+                                try:
+                                    trade = self.client.normalize_trade(raw_trade, market.source_market_id)
+                                    all_trades.append(trade)
+                                except Exception:
+                                    pass
+                            trades_fetched += len(raw_events)
+                    except Exception as e:
+                        logger.debug("Failed to fetch Limitless trades", slug=market.slug, error=str(e))
+                
+                if all_trades:
+                    trades_inserted = await self.silver_writer.insert_trades(all_trades)
+                    logger.info("Fetched Limitless trades (delta)", fetched=trades_fetched, inserted=str(trades_inserted))
+            
             result.success = True
             logger.info("Limitless delta load completed", markets=result.markets_upserted, prices=result.prices_fetched)
-            
+        
         except Exception as e:
             logger.error("Limitless delta load failed", error=str(e))
             result.error = str(e)
