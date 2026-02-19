@@ -200,14 +200,17 @@ class LimitlessClient(BaseAPIClient):
             status = MarketStatus.CLOSED
         
         # Extract prices from various possible locations
-        yes_price = self._to_decimal(
-            raw.get("yesPrice") or
-            (prices[0] if len(prices) > 0 else None)
-        )
-        no_price = self._to_decimal(
-            raw.get("noPrice") or
-            (prices[1] if len(prices) > 1 else None)
-        )
+        # Limitless prices come as 0-100 percent values → convert to 0.0-1.0
+        raw_yes = raw.get("yesPrice") or (prices[0] if len(prices) > 0 else None)
+        raw_no  = raw.get("noPrice")  or (prices[1] if len(prices) > 1 else None)
+        yes_price = self._to_decimal(raw_yes)
+        if yes_price is not None and yes_price > Decimal("1"):
+            yes_price = yes_price / Decimal("100")
+        no_price = self._to_decimal(raw_no)
+        if no_price is not None and no_price > Decimal("1"):
+            no_price = no_price / Decimal("100")
+        if no_price is None and yes_price is not None:
+            no_price = Decimal("1") - yes_price
         
         # Get category info - can be string, dict, or list
         categories = raw.get("categories", raw.get("category", []))

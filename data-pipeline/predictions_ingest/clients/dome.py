@@ -97,6 +97,7 @@ class DomeClient(BaseAPIClient):
         offset: int = 0,
         pagination_key: Optional[str] = None,
         active_only: bool = False,
+        min_volume: Optional[int] = None,
         **kwargs,
     ) -> tuple[list[dict[str, Any]], Optional[str]]:
         """
@@ -107,6 +108,7 @@ class DomeClient(BaseAPIClient):
             offset: Offset for pagination (deprecated for Kalshi, use pagination_key)
             pagination_key: Cursor for pagination (recommended for Kalshi)
             active_only: Filter to active markets only
+            min_volume: Minimum 24h volume in USD (server-side filtering)
         
         Returns:
             Tuple of (markets list, next_pagination_key)
@@ -131,6 +133,14 @@ class DomeClient(BaseAPIClient):
             # Use status=open to get truly active markets (~16k)
             # Note: closed=false returns 319k markets (too many)
             params["status"] = "open"
+        
+        # Add volume filtering (server-side) to reduce API calls
+        # When min_volume is set, Dome API returns results sorted by volume (highest first)
+        if min_volume and min_volume > 0:
+            params["min_volume"] = min_volume
+            params["sort_by"] = "volume"  # Explicit sort to ensure top markets by volume
+            params["order"] = "desc"       # Descending order (highest volume first)
+            
         params.update(kwargs)
         
         response = await self.get(f"/{self._prefix}/markets", params=params)
@@ -150,6 +160,7 @@ class DomeClient(BaseAPIClient):
         self,
         active_only: bool = False,
         max_records: int = 0,
+        min_volume: Optional[int] = None,
     ) -> list[dict[str, Any]]:
         """
         Fetch all markets using cursor-based pagination.
@@ -157,8 +168,17 @@ class DomeClient(BaseAPIClient):
         IMPORTANT: Dome API no longer supports offset pagination beyond 10,000 records.
         All sources must use cursor-based pagination with pagination_key.
         
-        When active_only=True, uses closed=false parameter for server-side filtering.
+        When active_only=True, uses status=open parameter for server-side filtering.
         This excludes closed markets and returns only open markets.
+        
+        When min_volume is set, API returns markets sorted by volume (descending).
+        Combined with max_records, this fetches the TOP N markets by volume.
+        
+        Args:
+            active_only: Filter to active markets only
+            max_records: Stop after this many records (0=unlimited). When combined with 
+                        min_volume, gets the TOP N highest volume markets.
+            min_volume: Minimum 24h volume in USD (server-side filtering)
         """
         all_markets = []
         limit = 100
@@ -171,6 +191,7 @@ class DomeClient(BaseAPIClient):
                 limit=limit,
                 pagination_key=pagination_key,
                 active_only=active_only,
+                min_volume=min_volume,
             )
             
             if not markets:
@@ -230,18 +251,30 @@ class DomeClient(BaseAPIClient):
             status = MarketStatus.PAUSED
         
         # Extract prices
-        yes_price = self._to_decimal(
-            raw.get("yes_price") or 
+        # Extract prices — Kalshi uses last_price on 0-100 cent scale; others use 0-1 decimal
+        raw_yes = (
+            raw.get("yes_price") or
             raw.get("yesPrice") or
             raw.get("outcomePrices", {}).get("Yes") or
-            (outcomes[0].price if outcomes else None)
+            (outcomes[0].price if outcomes else None) or
+            raw.get("last_price")   # Kalshi fallback
         )
-        no_price = self._to_decimal(
-            raw.get("no_price") or 
+        raw_no = (
+            raw.get("no_price") or
             raw.get("noPrice") or
             raw.get("outcomePrices", {}).get("No") or
             (outcomes[1].price if len(outcomes) > 1 else None)
         )
+        yes_price = self._to_decimal(raw_yes)
+        # Kalshi prices are on 0-100 scale → convert to 0-1
+        if yes_price is not None and yes_price > Decimal("1"):
+            yes_price = yes_price / Decimal("100")
+        no_price = self._to_decimal(raw_no)
+        if no_price is not None and no_price > Decimal("1"):
+            no_price = no_price / Decimal("100")
+        # Derive no_price from yes_price if missing (binary markets)
+        if no_price is None and yes_price is not None:
+            no_price = Decimal("1") - yes_price
         
         return Market(
             source=self.SOURCE,
@@ -872,8 +905,17 @@ class DomeClient(BaseAPIClient):
     
     def normalize_price(self, raw: dict[str, Any], market_id: str) -> PriceSnapshot:
         """Transform raw price data to PriceSnapshot model."""
-        yes_price = self._to_decimal(raw.get("yes_price") or raw.get("yesPrice"))
-        no_price = self._to_decimal(raw.get("no_price") or raw.get("noPrice"))
+        raw_yes = raw.get("yes_price") or raw.get("yesPrice") or raw.get("last_price") or raw.get("price")
+        raw_no = raw.get("no_price") or raw.get("noPrice")
+        yes_price = self._to_decimal(raw_yes)
+        # Kalshi prices are on 0-100 cent scale → convert to 0-1
+        if yes_price is not None and yes_price > Decimal("1"):
+            yes_price = yes_price / Decimal("100")
+        no_price = self._to_decimal(raw_no)
+        if no_price is not None and no_price > Decimal("1"):
+            no_price = no_price / Decimal("100")
+        if no_price is None and yes_price is not None:
+            no_price = Decimal("1") - yes_price
         
         return PriceSnapshot(
             source=self.SOURCE,

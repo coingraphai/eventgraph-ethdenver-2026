@@ -119,7 +119,7 @@ def ingest(ctx, source: str, load_type: str, parallel: bool):
             
             for result in results:
                 status = click.style("✓", fg="green") if result.success else click.style("✗", fg="red")
-                click.echo(f"{status} {result.source.value}: {result.markets_upserted} markets, {result.trades_inserted} trades ({result.duration_seconds:.1f}s)")
+                click.echo(f"{status} {result.source.value}: {result.markets_upserted} markets, {result.prices_updated} prices ({result.duration_seconds:.1f}s)")
                 if result.error:
                     click.echo(f"   Error: {result.error}")
             
