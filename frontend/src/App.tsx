@@ -13,6 +13,7 @@ import { Arbitrage } from './pages/Arbitrage';
 import { CrossVenue } from './pages/CrossVenue';
 import { Leaderboard } from './pages/Leaderboard';
 import { Alerts } from './pages/Alerts';
+import { Execution } from './pages/Execution';
 import { Pricing } from './pages/Pricing';
 import { Terms } from './pages/Terms';
 import { Privacy } from './pages/Privacy';
@@ -103,6 +104,8 @@ function AppContent() {
             <Route path="/cross-venue" element={<CrossVenue />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/alerts" element={<Alerts />} />
+            <Route path="/execution" element={<Execution />} />
+            <Route path="/vault" element={<Execution />} />
             
             {/* Legal & Info Pages */}
             <Route path="/pricing" element={<Pricing />} />

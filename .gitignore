@@ -77,3 +77,6 @@ typechain-types/
 # Hardhat
 coverage.json
 coverage/
+logs/
+*.log
+nohup.out

@@ -23,6 +23,7 @@ import {
   NotificationsActive as AlertsIcon,
   AutoAwesome as AskAIIcon,
   AttachMoney as PricingIcon,
+  AccountBalanceWallet as VaultIcon,
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
 import { keyframes } from '@mui/system';
@@ -62,6 +63,7 @@ export const PremiumSidebar: React.FC<PremiumSidebarProps> = ({ onNewChat }) => 
     { id: 'screener', name: 'Screener', icon: ScreenerIcon, route: '/screener' },
     { id: 'cross-venue', name: 'Compare', icon: CrossVenueIcon, route: '/cross-venue', color: '#3B82F6' },
     { id: 'arbitrage', name: 'Arbitrage', icon: ArbitrageIcon, route: '/arbitrage', color: '#22C55E' },
+    { id: 'execution', name: 'Execution', icon: VaultIcon, route: '/execution', color: '#8B5CF6' },
     { id: 'leaderboard', name: 'Leaderboard', icon: LeaderboardIcon, route: '/leaderboard', color: '#F59E0B' },
     { id: 'alerts', name: 'Alerts', icon: AlertsIcon, route: '/alerts', color: '#EF4444' },
     { id: 'pricing', name: 'Pricing', icon: PricingIcon, route: '/pricing' },

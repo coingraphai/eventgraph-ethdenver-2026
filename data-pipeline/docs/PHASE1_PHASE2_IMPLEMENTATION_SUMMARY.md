@@ -245,7 +245,7 @@ Update frontend to use new database-backed endpoints:
 ### Database Password
 Your `.env` still has placeholder password:
 ```
-DATABASE_URL=postgresql://doadmin:AVNS_password@...
+DATABASE_URL=postgresql://doadmin:YOUR_PASSWORD@your-db-host.db.provider.com:25060/defaultdb?sslmode=require
 ```
 **Update with real password to enable database queries!**
 
