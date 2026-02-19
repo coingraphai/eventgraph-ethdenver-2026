@@ -798,6 +798,7 @@ class DomeKalshiIngester(SourceIngester):
     def __init__(self):
         super().__init__()
         self.client = DomeClient(source=DataSource.KALSHI)
+        self.trades_fetcher = TradesFetcher(self.client, self.bronze_writer, self.silver_writer, self.SOURCE)
     
     async def run_static(self, run_id: str) -> IngestionResult:
         """Full load: Active markets + prices."""
@@ -862,6 +863,18 @@ class DomeKalshiIngester(SourceIngester):
                         await self.silver_writer.insert_orderbook(orderbook)
                 except Exception as e:
                     logger.debug("Failed to fetch orderbook", market_id=market.source_market_id)
+            
+            # Fetch recent trades for top Kalshi markets
+            if self.settings.trades_top_n_markets > 0:
+                trades_fetched, trades_inserted = await self.trades_fetcher.fetch_trades_batch(
+                    markets=active_markets,
+                    run_id=run_id,
+                )
+                logger.info(
+                    "Fetched Kalshi trades (static)",
+                    trades_fetched=trades_fetched,
+                    trades_inserted=trades_inserted,
+                )
             
             result.success = True
             logger.info("Kalshi static load completed", markets=result.markets_upserted, prices=result.prices_updated)
@@ -929,9 +942,21 @@ class DomeKalshiIngester(SourceIngester):
                 except Exception as e:
                     logger.debug("Failed to fetch price", market_id=market.source_market_id)
             
+            # Fetch recent trades for top Kalshi markets
+            if self.settings.trades_top_n_markets > 0:
+                trades_fetched, trades_inserted = await self.trades_fetcher.fetch_trades_batch(
+                    markets=active_markets,
+                    run_id=run_id,
+                )
+                logger.info(
+                    "Fetched Kalshi trades (delta)",
+                    trades_fetched=trades_fetched,
+                    trades_inserted=trades_inserted,
+                )
+            
             result.success = True
             logger.info("Kalshi delta load completed", markets=result.markets_upserted, prices=result.prices_updated)
-            
+        
         except Exception as e:
             logger.error("Kalshi delta load failed", error=str(e))
             result.error = str(e)
