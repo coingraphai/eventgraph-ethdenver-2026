@@ -89,6 +89,8 @@ class UnifiedMarket(BaseModel):
     category: str
     tags: List[str] = []
     last_price: Optional[float] = None
+    no_price: Optional[float] = None
+    liquidity: Optional[float] = None
     event_group: Optional[str] = None  # Event grouping: event_slug (poly), event_ticker (kalshi), slug-prefix (limitless)
     event_group_label: Optional[str] = None  # Human-readable event name
     extra: Dict[str, Any] = {}
@@ -664,6 +666,10 @@ async def fetch_all_from_silver_db(search=None, min_volume=None) -> tuple:
         source = row.source
         extra = dict(row.extra_data) if row.extra_data else {}
         yes_p = float(row.yes_price) if row.yes_price is not None else None
+        no_p = float(row.no_price) if row.no_price is not None else (round(1 - yes_p, 4) if yes_p is not None else None)
+        raw_liq = float(row.liquidity) if row.liquidity is not None else None
+        # Limitless stores liquidity in USDC base units (6 decimals) — normalize to USD
+        liq = (raw_liq / 1_000_000) if (raw_liq and row.source == "limitless" and raw_liq > 1_000_000) else raw_liq
 
         event_group = None
         event_group_label = None
@@ -733,6 +739,8 @@ async def fetch_all_from_silver_db(search=None, min_volume=None) -> tuple:
                 category=row.category_name or categorize_market(row.title, list(row.tags) if row.tags else []),
                 tags=list(row.tags) if row.tags else [],
                 last_price=yes_p,
+                no_price=no_p,
+                liquidity=liq,
                 event_group=event_group,
                 event_group_label=event_group_label,
                 extra=extra,

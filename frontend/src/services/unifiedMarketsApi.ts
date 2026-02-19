@@ -26,6 +26,8 @@ export interface UnifiedMarket {
   category: string;
   tags: string[];
   last_price: number | null;
+  no_price?: number | null;
+  liquidity?: number | null;
   event_group?: string | null;
   event_group_label?: string | null;
   extra: {

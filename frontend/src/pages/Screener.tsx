@@ -247,13 +247,16 @@ export const Screener: React.FC = () => {
 
   const handleExport = () => {
     const csv = [
-      ['Market', 'Platform', 'Category', 'YES Price', 'Total Volume', 'End Time'].join(','),
+      ['Market', 'Event', 'Platform', 'Category', 'YES Price', 'NO Price', 'Total Volume', 'Liquidity', 'End Time'].join(','),
       ...markets.map(m => [
         `"${m.title.replace(/"/g, '""')}"`,
+        `"${(m.event_group_label || '').replace(/"/g, '""')}"`,
         m.platform,
         m.category || '',
         m.last_price ? (m.last_price * 100).toFixed(1) + '%' : '',
+        m.no_price ? (m.no_price * 100).toFixed(1) + '%' : '',
         m.volume_total_usd || 0,
+        m.liquidity || '',
         m.end_time ? new Date(m.end_time * 1000).toISOString() : '',
       ].join(','))
     ].join('\n');
@@ -551,7 +554,9 @@ export const Screener: React.FC = () => {
                 <TableCell sx={{ fontWeight: 600 }} align="center">Platform</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="center">Category</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="right">YES Price</TableCell>
+                <TableCell sx={{ fontWeight: 600 }} align="right">NO Price</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="right">Total Volume</TableCell>
+                <TableCell sx={{ fontWeight: 600 }} align="right">Liquidity</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="center">Ends In</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="center">Action</TableCell>
               </TableRow>
@@ -566,6 +571,8 @@ export const Screener: React.FC = () => {
                     <TableCell><Skeleton animation="wave" width={80} /></TableCell>
                     <TableCell><Skeleton animation="wave" width={60} /></TableCell>
                     <TableCell><Skeleton animation="wave" width={50} /></TableCell>
+                    <TableCell><Skeleton animation="wave" width={50} /></TableCell>
+                    <TableCell><Skeleton animation="wave" width={70} /></TableCell>
                     <TableCell><Skeleton animation="wave" width={70} /></TableCell>
                     <TableCell><Skeleton animation="wave" width={40} /></TableCell>
                     <TableCell><Skeleton animation="wave" width={40} /></TableCell>
@@ -573,14 +580,14 @@ export const Screener: React.FC = () => {
                 ))
               ) : error ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                     <Typography color="error">{error}</Typography>
                     <Button onClick={fetchMarkets} sx={{ mt: 1 }}>Retry</Button>
                   </TableCell>
                 </TableRow>
               ) : filteredMarkets.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                     {viewMode === 'watchlist' ? (
                       <Box>
                         <StarBorder sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
@@ -723,8 +730,25 @@ export const Screener: React.FC = () => {
                       </Typography>
                     </TableCell>
                     <TableCell align="right">
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontFamily: 'monospace',
+                          fontWeight: 600,
+                          color: (market.no_price || 0) > 0.5 ? '#EF4444' : '#94A3B8',
+                        }}
+                      >
+                        {formatPrice(market.no_price)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
                       <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
                         {formatVolume(market.volume_total_usd)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+                        {market.liquidity ? formatVolume(market.liquidity) : '—'}
                       </Typography>
                     </TableCell>
                     <TableCell align="center">
