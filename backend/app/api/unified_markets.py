@@ -609,21 +609,143 @@ async def _enrich_polymarket_prices(markets: List[UnifiedMarket]) -> List[Unifie
 # CACHE HELPERS
 # =============================================================================
 
+async def fetch_all_from_silver_db(search=None, min_volume=None) -> tuple:
+    """
+    Fetch ALL platforms from predictions_silver.markets (our pipeline DB).
+    Uses existing SQLAlchemy sync engine via thread executor — fast, no API calls.
+    """
+    import calendar
+    from app.database.session import SessionLocal
+
+    def _run_query():
+        session = SessionLocal()
+        try:
+            where_parts = ["(is_active = true OR status IN ('active', 'open'))"]
+            params: Dict[str, Any] = {}
+            if min_volume:
+                where_parts.append("volume_total >= :min_vol")
+                params["min_vol"] = float(min_volume)
+            if search:
+                where_parts.append("title ILIKE :search")
+                params["search"] = f"%{search}%"
+            where_sql = " AND ".join(where_parts)
+
+            sql = text(f"""
+                SELECT
+                    source, source_market_id, slug, condition_id,
+                    title, category_name, tags, status,
+                    yes_price, no_price,
+                    volume_24h, volume_7d, volume_30d, volume_total, liquidity,
+                    start_date, end_date,
+                    image_url, source_url, extra_data
+                FROM predictions_silver.markets
+                WHERE {where_sql}
+                ORDER BY volume_total DESC NULLS LAST
+                LIMIT 2000
+            """)
+            rows = session.execute(sql, params).fetchall()
+            return rows
+        finally:
+            session.close()
+
+    loop = asyncio.get_event_loop()
+    try:
+        rows = await loop.run_in_executor(None, _run_query)
+    except Exception as e:
+        logger.error(f"DB silver fetch failed: {e}")
+        return [], {"poly": 0, "kalshi": 0, "limitless": 0, "opiniontrade": 0}
+
+    all_markets: List[UnifiedMarket] = []
+    platform_counts = {"poly": 0, "kalshi": 0, "limitless": 0, "opiniontrade": 0}
+
+    for row in rows:
+        source = row.source
+        extra = dict(row.extra_data) if row.extra_data else {}
+        yes_p = float(row.yes_price) if row.yes_price is not None else None
+
+        if source == "polymarket":
+            platform_key = "poly"
+            extra.update({
+                "condition_id": row.condition_id or "",
+                "market_slug": row.slug or row.source_market_id,
+                "event_slug": extra.get("event_slug") or row.slug or row.source_market_id,
+                "image": row.image_url,
+            })
+        elif source == "kalshi":
+            platform_key = "kalshi"
+            extra.update({
+                "market_ticker": row.source_market_id,
+                "event_ticker": extra.get("event_ticker") or row.source_market_id.rsplit("-", 1)[0],
+            })
+        elif source == "limitless":
+            platform_key = "limitless"
+            extra.update({
+                "market_slug": row.slug or row.source_market_id,
+                "image": row.image_url,
+                "liquidity": float(row.liquidity) if row.liquidity else 0,
+            })
+        else:
+            platform_key = "opiniontrade"
+            extra.update({"market_slug": row.slug or row.source_market_id})
+
+        if platform_key not in platform_counts:
+            continue
+
+        end_ts = None
+        if row.end_date:
+            end_ts = int(calendar.timegm(row.end_date.timetuple()))
+
+        try:
+            market = UnifiedMarket(
+                platform=platform_key,
+                id=row.source_market_id,
+                title=row.title,
+                status=row.status or "open",
+                start_time=None,
+                end_time=end_ts,
+                close_time=end_ts,
+                volume_total_usd=float(row.volume_total or 0),
+                volume_24h_usd=float(row.volume_24h or 0) if row.volume_24h else None,
+                volume_1_week_usd=float(row.volume_7d or 0) if row.volume_7d else None,
+                volume_1_month_usd=float(row.volume_30d or 0) if row.volume_30d else None,
+                category=row.category_name or categorize_market(row.title, list(row.tags) if row.tags else []),
+                tags=list(row.tags) if row.tags else [],
+                last_price=yes_p,
+                extra=extra,
+            )
+            all_markets.append(market)
+            platform_counts[platform_key] += 1
+        except Exception as e:
+            logger.debug(f"Error building UnifiedMarket from DB row: {e}")
+
+    logger.info(f"DB silver fetch: poly={platform_counts['poly']} kalshi={platform_counts['kalshi']} "
+                f"limitless={platform_counts['limitless']} (total={len(all_markets)})")
+    return all_markets, platform_counts
+
+
 async def _fetch_all_unified_markets(search=None, min_volume=None):
     """
-    Fetch from ALL 4 platforms in parallel. Returns (all_markets, platform_counts).
-    
-    Uses ProductionCacheService for Limitless/OpinionTrade to avoid 30s API waits.
-    Polymarket & Kalshi use Dome API (already fast).
+    Fetch from ALL 4 platforms. Returns (all_markets, platform_counts).
+    Uses predictions_silver.markets (pipeline DB) for all platforms — fast, no API calls.
+    Falls back to Dome API if DB returns < 100 markets.
     """
     all_markets: List[UnifiedMarket] = []
     platform_counts = {"poly": 0, "kalshi": 0, "limitless": 0, "opiniontrade": 0}
-    
+
+    # Primary: read from our pipeline DB (top 500 markets already stored)
+    try:
+        all_markets, platform_counts = await fetch_all_from_silver_db(search, min_volume)
+        total = sum(platform_counts.values())
+        if total >= 100:
+            return all_markets, platform_counts
+        logger.warning(f"DB returned only {total} markets, falling back to live APIs")
+    except Exception as e:
+        logger.error(f"DB fetch failed, falling back to live APIs: {e}")
+
+    # Fallback: live API calls (only if DB is empty/failing)
     # Get cache service for slow platforms
     cache_service = get_production_cache()
-    
-    # Fast platforms: Use Dome API directly
-    # Slow platforms: Use PostgreSQL cache (ProductionCacheService)
+
     tasks = [
         ("poly", fetch_polymarket_from_dome_api(search, min_volume)),
         ("kalshi", fetch_kalshi_from_api(search, min_volume)),
