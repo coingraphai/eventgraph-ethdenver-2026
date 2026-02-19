@@ -335,8 +335,11 @@ class TradesFetcher:
         self.silver_writer = silver_writer
         self.source = source
         self.settings = get_settings()
-        # Configuration with defaults
-        self.top_n_markets = getattr(self.settings, 'trades_top_n_markets', 100)
+        # Use per-source top_n if available (Kalshi has separate limit)
+        if source == DataSource.KALSHI:
+            self.top_n_markets = getattr(self.settings, 'kalshi_trades_top_n_markets', 50)
+        else:
+            self.top_n_markets = getattr(self.settings, 'trades_top_n_markets', 100)
         self.since_hours = getattr(self.settings, 'trades_since_hours', 24)
         self.min_usd = getattr(self.settings, 'trades_min_usd', 1000)
         self.max_trades_per_market = getattr(self.settings, 'trades_max_per_market', 1000)

@@ -178,7 +178,8 @@ class Settings(BaseSettings):
     orderbook_fetch_top_n: int = Field(default=0, ge=0, le=100, description="Fetch orderbooks for top N markets by volume (0=skip)")
     
     # Trades fetching configuration (filtered to reduce data volume)
-    trades_top_n_markets: int = Field(default=100, ge=0, le=500, description="Fetch trades for top N markets by volume (0=skip)")
+    trades_top_n_markets: int = Field(default=100, ge=0, le=500, description="Fetch trades for top N Polymarket markets by volume (0=skip)")
+    kalshi_trades_top_n_markets: int = Field(default=50, ge=0, le=500, description="Fetch trades for top N Kalshi markets by volume (0=skip, default:50 - Kalshi has fewer trades)")
     trades_since_hours: int = Field(default=24, ge=1, le=168, description="Fetch trades from last N hours")
     trades_min_usd: int = Field(default=1000, ge=0, description="Minimum trade value in USD (0=all trades)")
     trades_max_per_market: int = Field(default=1000, ge=100, le=10000, description="Maximum trades to fetch per market (limits API calls)")
