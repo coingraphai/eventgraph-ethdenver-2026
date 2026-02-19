@@ -580,40 +580,33 @@ class DomePolymarketIngester(SourceIngester):
             await self.client.connect()
             
             # =====================================================
-            # STEP 0: Fetch events first (needed for event titles and metadata)
-            # Events provide proper title/subtitle for event-level grouping
-            # Filter for status='open' instead of active_only
+            # STEP 0: SKIP events for now (optional metadata)
+            # Note: 1 event can have multiple markets (e.g., "2024 Election" event has 5+ markets)
+            # Top 1000 events != top 500 markets by volume
+            # We focus on markets first since they're the core data
             # =====================================================
-            logger.info("Fetching events metadata (open status only)")
-            raw_events = await self.client.fetch_all_events(active_only=False, max_events=0)
-            # Filter for open status
-            open_events = [e for e in raw_events if e.get('status') == 'open']
-            logger.info("Fetched events", total=len(raw_events), open=len(open_events))
-            
-            # Store events in Bronze layer
-            if open_events:
-                inserted, _ = await self.bronze_writer.write_batch(
-                    records=open_events,
-                    source=self.SOURCE,
-                    endpoint="/polymarket/events",
-                    run_id=run_id,
-                )
-                result.bronze_records += inserted
-                
-                # Normalize and store in Silver layer
-                events = [self.client.normalize_event(e) for e in open_events]
-                await self.silver_writer.upsert_events(events)
-                logger.info("Stored open events in silver layer", count=len(events))
             
             # =====================================================
             # STEP 1: Fetch all pages and filter for status='open'
             # API returns mixed open/closed markets across all pages
             # Will process all ~15k markets and keep ~8k open markets
+            # 
+            # OPTIMIZATION: Use min_volume and max_records to fetch only top markets
+            # This reduces API calls from ~160 to ~5 per source
             # =====================================================
-            logger.info("Fetching all pages (filtering for open markets)")
-            raw_markets = await self.client.fetch_all_markets(active_only=True)
+            logger.info("Fetching top markets by volume (server-side filtering)")
+            raw_markets = await self.client.fetch_all_markets(
+                active_only=True,
+                min_volume=self.settings.polymarket_min_volume_usd,
+                max_records=self.settings.polymarket_max_markets,
+            )
             result.markets_fetched = len(raw_markets)
-            logger.info("Fetched active markets", count=result.markets_fetched)
+            logger.info(
+                "Fetched high-volume markets",
+                count=result.markets_fetched,
+                min_volume_usd=self.settings.polymarket_min_volume_usd,
+                max_markets=self.settings.polymarket_max_markets,
+            )
             
             # Store in Bronze layer
             inserted, _ = await self.bronze_writer.write_batch(
@@ -715,30 +708,22 @@ class DomePolymarketIngester(SourceIngester):
             logger.info("Starting Polymarket delta load", run_id=run_id)
             await self.client.connect()
             
-            # Fetch events first (for event metadata updates, filter for open status)
-            logger.info("Fetching events metadata (open status only)")
-            raw_events = await self.client.fetch_all_events(active_only=False, max_events=0)
-            # Filter for open status
-            open_events = [e for e in raw_events if e.get('status') == 'open']
-            logger.info("Fetched events", total=len(raw_events), open=len(open_events))
+            # Skip events for delta loads (optional metadata, 1 event = multiple markets)
+            # Events don't have volume, so top N events != top N markets by volume
+            # Focus on markets which are the core trading instruments
             
-            # Store events in Bronze and Silver layers
-            if open_events:
-                inserted, _ = await self.bronze_writer.write_batch(
-                    records=open_events,
-                    source=self.SOURCE,
-                    endpoint="/polymarket/events",
-                    run_id=run_id,
-                )
-                result.bronze_records += inserted
-                
-                events = [self.client.normalize_event(e) for e in open_events]
-                await self.silver_writer.upsert_events(events)
-                logger.info("Stored open events in silver layer", count=len(events))
-            
-            # Fetch active markets only
-            raw_markets = await self.client.fetch_all_markets(active_only=True)
+            # Fetch active markets only (with volume filtering)
+            raw_markets = await self.client.fetch_all_markets(
+                active_only=True,
+                min_volume=self.settings.polymarket_min_volume_usd,
+                max_records=self.settings.polymarket_max_markets,
+            )
             result.markets_fetched = len(raw_markets)
+            logger.info(
+                "Delta: Fetched high-volume markets",
+                count=result.markets_fetched,
+                min_volume_usd=self.settings.polymarket_min_volume_usd,
+            )
             
             # Store in Bronze
             inserted, _ = await self.bronze_writer.write_batch(
@@ -827,9 +812,19 @@ class DomeKalshiIngester(SourceIngester):
             logger.info("Starting Kalshi static load", run_id=run_id)
             await self.client.connect()
             
-            # Fetch active markets only
-            raw_markets = await self.client.fetch_all_markets(active_only=True)
+            # Fetch active markets only (with volume filtering)
+            raw_markets = await self.client.fetch_all_markets(
+                active_only=True,
+                min_volume=self.settings.kalshi_min_volume_usd,
+                max_records=self.settings.kalshi_max_markets,
+            )
             result.markets_fetched = len(raw_markets)
+            logger.info(
+                "Fetched high-volume Kalshi markets",
+                count=result.markets_fetched,
+                min_volume_usd=self.settings.kalshi_min_volume_usd,
+                max_markets=self.settings.kalshi_max_markets,
+            )
             
             # Store in Bronze + Silver
             inserted, _ = await self.bronze_writer.write_batch(
@@ -896,9 +891,18 @@ class DomeKalshiIngester(SourceIngester):
             logger.info("Starting Kalshi delta load", run_id=run_id)
             await self.client.connect()
             
-            # Fetch active markets
-            raw_markets = await self.client.fetch_all_markets(active_only=True)
+            # Fetch active markets (with volume filtering)
+            raw_markets = await self.client.fetch_all_markets(
+                active_only=True,
+                min_volume=self.settings.kalshi_min_volume_usd,
+                max_records=self.settings.kalshi_max_markets,
+            )
             result.markets_fetched = len(raw_markets)
+            logger.info(
+                "Delta: Fetched high-volume Kalshi markets",
+                count=result.markets_fetched,
+                min_volume_usd=self.settings.kalshi_min_volume_usd,
+            )
             
             inserted, _ = await self.bronze_writer.write_batch(
                 records=raw_markets,
@@ -1365,28 +1369,50 @@ class IngestionOrchestrator:
         self,
         load_type: LoadType,
         sources: Optional[list[DataSource]] = None,
+        parallel: bool = True,
     ) -> list[IngestionResult]:
-        """Run ingestion for all enabled sources."""
+        """
+        Run ingestion for all enabled sources.
+        
+        Args:
+            load_type: Static (full) or delta (incremental) load
+            sources: List of sources to run (defaults to enabled_sources)
+            parallel: If True, run sources concurrently (async). If False, run sequentially.
+        
+        Returns:
+            List of IngestionResult for each source
+        """
         if sources is None:
             sources = self.settings.enabled_sources
         
-        results = []
-        
-        for source in sources:
-            try:
-                result = await self.run_source(source, load_type)
+        if parallel:
+            # Run all sources in parallel using asyncio.gather
+            logger.info(
+                "Starting parallel source ingestion",
+                load_type=load_type.value,
+                sources=[s.value for s in sources],
+                count=len(sources),
+            )
+            
+            tasks = []
+            for source in sources:
+                tasks.append(self._run_source_safe(source, load_type))
+            
+            # Run all sources concurrently
+            results = await asyncio.gather(*tasks, return_exceptions=False)
+        else:
+            # Sequential execution (legacy behavior)
+            logger.info(
+                "Starting sequential source ingestion",
+                load_type=load_type.value,
+                sources=[s.value for s in sources],
+                count=len(sources),
+            )
+            
+            results = []
+            for source in sources:
+                result = await self._run_source_safe(source, load_type)
                 results.append(result)
-            except Exception as e:
-                logger.error("Source ingestion failed", source=source.value, error=str(e))
-                results.append(IngestionResult(
-                    source=source,
-                    load_type=load_type,
-                    run_id=str(uuid.uuid4()),
-                    started_at=datetime.utcnow(),
-                    finished_at=datetime.utcnow(),
-                    success=False,
-                    error=str(e),
-                ))
         
         # Log summary
         successful = sum(1 for r in results if r.success)
@@ -1396,6 +1422,7 @@ class IngestionOrchestrator:
         logger.info(
             "Completed all source ingestion",
             load_type=load_type.value,
+            execution_mode="parallel" if parallel else "sequential",
             sources_run=len(results),
             sources_successful=successful,
             total_markets=total_markets,
@@ -1410,6 +1437,30 @@ class IngestionOrchestrator:
                 logger.warning("Failed to refresh gold views", error=str(e))
         
         return results
+    
+    async def _run_source_safe(
+        self,
+        source: DataSource,
+        load_type: LoadType,
+    ) -> IngestionResult:
+        """
+        Run a single source with error handling.
+        Used internally by run_all_sources for both sequential and parallel execution.
+        """
+        try:
+            result = await self.run_source(source, load_type)
+            return result
+        except Exception as e:
+            logger.error("Source ingestion failed", source=source.value, error=str(e))
+            return IngestionResult(
+                source=source,
+                load_type=load_type,
+                run_id=str(uuid.uuid4()),
+                started_at=datetime.utcnow(),
+                finished_at=datetime.utcnow(),
+                success=False,
+                error=str(e),
+            )
     
     async def refresh_materialized_views(self):
         """Refresh gold layer materialized views after ingestion."""

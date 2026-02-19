@@ -75,7 +75,7 @@ class Settings(BaseSettings):
         description="Dome API base URL"
     )
     dome_rate_limit_rps: float = Field(
-        default=50.0,  # Dev tier: 100 QPS, use 50 for safety
+        default=75.0,  # Dev tier: 100 QPS, use 75 for optimal performance
         ge=1.0,
         le=300.0,
         description="Dome API rate limit (requests per second)"
@@ -114,7 +114,7 @@ class Settings(BaseSettings):
     # GENERAL API SETTINGS
     # ==========================================================================
     api_timeout_seconds: int = Field(default=30, ge=5, le=300)
-    max_concurrency: int = Field(default=5, ge=1, le=50)
+    max_concurrency: int = Field(default=10, ge=1, le=50)
     default_page_size: int = Field(default=100, ge=10, le=1000)
     max_pages_per_endpoint: int = Field(default=0, description="0 = unlimited")
     
@@ -156,8 +156,22 @@ class Settings(BaseSettings):
     # INGESTION PIPELINE CONFIGURATION
     # ==========================================================================
     
+    # Volume-based market filtering (server-side via Dome API min_volume parameter)
+    # This filters markets BEFORE fetching to reduce API calls significantly
+    # Set to 0 to disable filtering and fetch all markets
+    polymarket_min_volume_usd: int = Field(default=50000, ge=0, description="Polymarket: minimum 24h volume (USD) to fetch markets")
+    kalshi_min_volume_usd: int = Field(default=10000, ge=0, description="Kalshi: minimum 24h volume (USD) to fetch markets") 
+    limitless_min_volume_usd: int = Field(default=5000, ge=0, description="Limitless: minimum 24h volume (USD) to fetch markets")
+    opiniontrade_min_volume_usd: int = Field(default=5000, ge=0, description="OpinionTrade: minimum 24h volume (USD) to fetch markets")
+    
+    # Max markets to fetch per platform (additional safety limit after volume filtering)
+    polymarket_max_markets: int = Field(default=500, ge=0, description="Maximum markets to fetch from Polymarket (0=unlimited)")
+    kalshi_max_markets: int = Field(default=500, ge=0, description="Maximum markets to fetch from Kalshi (0=unlimited)")
+    limitless_max_markets: int = Field(default=100, ge=0, description="Maximum markets to fetch from Limitless (0=unlimited)")
+    opiniontrade_max_markets: int = Field(default=100, ge=0, description="Maximum markets to fetch from OpinionTrade (0=unlimited)")
+    
     # Price fetching concurrency (number of parallel API requests)
-    price_fetch_batch_size: int = Field(default=50, ge=10, le=100, description="Number of concurrent price API requests")
+    price_fetch_batch_size: int = Field(default=75, ge=10, le=100, description="Number of concurrent price API requests")
     
     # Orderbook fetching limits (to reduce API usage)
     # NOTE: Set to 0 by default - Polymarket orderbook API requires token_id not condition_id
