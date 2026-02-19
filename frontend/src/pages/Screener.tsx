@@ -165,6 +165,7 @@ export const Screener: React.FC = () => {
   const [watchlist, setWatchlist] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'all' | 'watchlist'>('all');
   const [activePreset, setActivePreset] = useState<string | null>(null);
+  const [displayMode, setDisplayMode] = useState<'list' | 'grid'>('list');
 
   // Fetch markets
   const fetchMarkets = useCallback(async () => {
@@ -341,7 +342,7 @@ export const Screener: React.FC = () => {
       </Box>
 
       {/* View Tabs */}
-      <Box sx={{ mb: 2 }}>
+      <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1 }}>
         <ToggleButtonGroup
           value={viewMode}
           exclusive
@@ -355,6 +356,25 @@ export const Screener: React.FC = () => {
           <ToggleButton value="watchlist" sx={{ px: 3 }}>
             <Star sx={{ mr: 1, fontSize: 18, color: watchlist.size > 0 ? '#FCD34D' : 'inherit' }} />
             Watchlist {watchlist.size > 0 && `(${watchlist.size})`}
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        {/* Display Mode Toggle */}
+        <ToggleButtonGroup
+          value={displayMode}
+          exclusive
+          onChange={(_, val) => val && setDisplayMode(val)}
+          size="small"
+        >
+          <ToggleButton value="list">
+            <Tooltip title="List view">
+              <ViewList sx={{ fontSize: 18 }} />
+            </Tooltip>
+          </ToggleButton>
+          <ToggleButton value="grid">
+            <Tooltip title="Grid view">
+              <ViewModule sx={{ fontSize: 18 }} />
+            </Tooltip>
           </ToggleButton>
         </ToggleButtonGroup>
       </Box>
@@ -613,7 +633,228 @@ export const Screener: React.FC = () => {
         </Stack>
       </Box>
 
-      {/* Results Table */}
+      {/* ── GRID VIEW ─────────────────────────────────────────────── */}
+      {displayMode === 'grid' && (
+        <Box>
+          {loading ? (
+            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2 }}>
+              {[...Array(12)].map((_, i) => (
+                <Paper key={i} elevation={0} sx={{ p: 2, borderRadius: 2, border: `1px solid ${alpha(theme.palette.divider, 0.1)}`, backgroundColor: alpha(theme.palette.background.paper, 0.6) }}>
+                  <Skeleton variant="rectangular" height={100} sx={{ borderRadius: 1, mb: 1.5 }} animation="wave" />
+                  <Skeleton animation="wave" height={20} sx={{ mb: 0.5 }} />
+                  <Skeleton animation="wave" height={16} width="60%" sx={{ mb: 1.5 }} />
+                  <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+                    <Skeleton animation="wave" width={80} height={28} />
+                    <Skeleton animation="wave" width={60} height={28} />
+                  </Stack>
+                  <Stack direction="row" justifyContent="space-between">
+                    <Skeleton animation="wave" width={50} height={32} />
+                    <Skeleton animation="wave" width={50} height={32} />
+                  </Stack>
+                </Paper>
+              ))}
+            </Box>
+          ) : filteredMarkets.length === 0 ? (
+            <Paper elevation={0} sx={{ p: 6, textAlign: 'center', borderRadius: 2, border: `1px solid ${alpha(theme.palette.divider, 0.1)}`, backgroundColor: alpha(theme.palette.background.paper, 0.6) }}>
+              {viewMode === 'watchlist' ? (
+                <Box>
+                  <StarBorder sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+                  <Typography color="text.secondary" sx={{ mb: 1 }}>Your watchlist is empty</Typography>
+                  <Button variant="outlined" size="small" onClick={() => setViewMode('all')}>Browse Markets</Button>
+                </Box>
+              ) : (
+                <Typography color="text.secondary">No markets found matching filters</Typography>
+              )}
+            </Paper>
+          ) : (
+            <>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2 }}>
+                {filteredMarkets.map((market, index) => {
+                  const isWatched = watchlist.has(`${market.platform}-${market.id}`);
+                  const pct = market.last_price != null ? market.last_price * 100 : null;
+                  const noPct = market.no_price != null ? market.no_price * 100 : null;
+                  const hasChange = market.price_change_pct_24h != null && market.price_change_pct_24h !== 0;
+                  const nowSec = Date.now() / 1000;
+                  const urgentEnd = market.end_time && (market.end_time - nowSec) < 86400 && (market.end_time - nowSec) > 0;
+                  return (
+                    <Paper
+                      key={`${market.platform}-${market.id}`}
+                      elevation={0}
+                      onClick={() => handleMarketClick(market)}
+                      sx={{
+                        p: 0,
+                        borderRadius: 2,
+                        cursor: 'pointer',
+                        overflow: 'hidden',
+                        border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+                        backgroundColor: alpha(theme.palette.background.paper, 0.6),
+                        backdropFilter: 'blur(10px)',
+                        animation: `${fadeInUp} 0.3s ease ${index * 0.015}s both`,
+                        transition: 'transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease',
+                        '&:hover': {
+                          transform: 'translateY(-2px)',
+                          boxShadow: `0 8px 24px ${alpha(theme.palette.primary.main, 0.12)}`,
+                          borderColor: alpha(theme.palette.primary.main, 0.3),
+                        },
+                      }}
+                    >
+                      {/* Card image or color bar */}
+                      {market.extra?.image ? (
+                        <Box sx={{ position: 'relative', height: 110, overflow: 'hidden' }}>
+                          <Box
+                            component="img"
+                            src={market.extra.image}
+                            sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          />
+                          {/* Gradient overlay */}
+                          <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.7) 100%)' }} />
+                          {/* Platform chip overlaid */}
+                          <Box sx={{ position: 'absolute', top: 8, left: 8 }}>
+                            <Chip
+                              label={PLATFORM_NAMES[market.platform] || market.platform}
+                              size="small"
+                              sx={{ backgroundColor: PLATFORM_COLORS[market.platform]?.bg || 'rgba(0,0,0,0.5)', color: PLATFORM_COLORS[market.platform]?.primary, fontWeight: 700, fontSize: '0.65rem', backdropFilter: 'blur(8px)' }}
+                            />
+                          </Box>
+                          {/* Watch star overlaid top-right */}
+                          <Box sx={{ position: 'absolute', top: 4, right: 4 }}>
+                            <IconButton
+                              size="small"
+                              onClick={e => { e.stopPropagation(); toggleWatchlist(`${market.platform}-${market.id}`); }}
+                              sx={{ color: isWatched ? '#FCD34D' : 'rgba(255,255,255,0.7)', '&:hover': { color: '#FCD34D' } }}
+                            >
+                              {isWatched ? <Star sx={{ fontSize: 18 }} /> : <StarBorder sx={{ fontSize: 18 }} />}
+                            </IconButton>
+                          </Box>
+                          {/* 24h change badge overlaid bottom-right */}
+                          {hasChange && (
+                            <Box sx={{ position: 'absolute', bottom: 8, right: 8 }}>
+                              <Chip
+                                icon={market.price_change_pct_24h! > 0 ? <TrendingUp sx={{ fontSize: 12 }} /> : <TrendingDown sx={{ fontSize: 12 }} />}
+                                label={`${market.price_change_pct_24h! > 0 ? '+' : ''}${market.price_change_pct_24h!.toFixed(1)}%`}
+                                size="small"
+                                sx={{
+                                  height: 20, fontSize: '0.65rem', fontWeight: 700,
+                                  backgroundColor: market.price_change_pct_24h! > 0 ? alpha('#22C55E', 0.85) : alpha('#EF4444', 0.85),
+                                  color: '#fff',
+                                  '& .MuiChip-icon': { color: '#fff' },
+                                  backdropFilter: 'blur(4px)',
+                                }}
+                              />
+                            </Box>
+                          )}
+                        </Box>
+                      ) : (
+                        /* No image — colored header bar */
+                        <Box sx={{
+                          height: 6,
+                          background: `linear-gradient(90deg, ${PLATFORM_COLORS[market.platform]?.primary || '#8B5CF6'}, ${alpha(PLATFORM_COLORS[market.platform]?.primary || '#8B5CF6', 0.3)})`,
+                        }} />
+                      )}
+
+                      {/* Card body */}
+                      <Box sx={{ p: 1.5 }}>
+                        {/* Title */}
+                        <Typography
+                          variant="body2"
+                          sx={{ fontWeight: 600, mb: 0.5, lineHeight: 1.35, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}
+                        >
+                          {market.title}
+                        </Typography>
+
+                        {/* Event group label */}
+                        {market.event_group_label && (
+                          <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mb: 0.75, fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            📂 {market.event_group_label}
+                          </Typography>
+                        )}
+
+                        {/* No image: platform + 24h change row */}
+                        {!market.extra?.image && (
+                          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 0.75 }}>
+                            <Chip label={PLATFORM_NAMES[market.platform] || market.platform} size="small" sx={{ backgroundColor: PLATFORM_COLORS[market.platform]?.bg, color: PLATFORM_COLORS[market.platform]?.primary, fontWeight: 600, fontSize: '0.65rem', height: 18 }} />
+                            {hasChange && (
+                              <Chip
+                                icon={market.price_change_pct_24h! > 0 ? <TrendingUp sx={{ fontSize: 10 }} /> : <TrendingDown sx={{ fontSize: 10 }} />}
+                                label={`${market.price_change_pct_24h! > 0 ? '+' : ''}${market.price_change_pct_24h!.toFixed(1)}%`}
+                                size="small"
+                                sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700, backgroundColor: market.price_change_pct_24h! > 0 ? alpha('#22C55E', 0.15) : alpha('#EF4444', 0.15), color: market.price_change_pct_24h! > 0 ? '#22C55E' : '#EF4444', '& .MuiChip-icon': { color: market.price_change_pct_24h! > 0 ? '#22C55E' : '#EF4444' } }}
+                              />
+                            )}
+                          </Stack>
+                        )}
+
+                        {/* Category + Volume row */}
+                        <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
+                          <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.7rem' }}>
+                            {market.category || '—'}
+                          </Typography>
+                          <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 600, color: 'text.secondary', fontSize: '0.7rem' }}>
+                            {formatVolume(market.volume_total_usd)}
+                          </Typography>
+                        </Stack>
+
+                        {/* YES / NO price buttons */}
+                        <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                          <Box sx={{ flex: 1, py: 0.6, px: 1, borderRadius: 1.5, backgroundColor: alpha('#22C55E', 0.12), border: `1px solid ${alpha('#22C55E', 0.25)}`, textAlign: 'center' }}>
+                            <Typography variant="caption" sx={{ color: '#22C55E', fontWeight: 700, fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                              YES {pct != null ? `${pct.toFixed(1)}¢` : '—'}
+                            </Typography>
+                          </Box>
+                          <Box sx={{ flex: 1, py: 0.6, px: 1, borderRadius: 1.5, backgroundColor: alpha('#EF4444', 0.12), border: `1px solid ${alpha('#EF4444', 0.25)}`, textAlign: 'center' }}>
+                            <Typography variant="caption" sx={{ color: '#EF4444', fontWeight: 700, fontSize: '0.75rem', fontFamily: 'monospace' }}>
+                              NO {noPct != null ? `${noPct.toFixed(1)}¢` : pct != null ? `${(100 - pct).toFixed(1)}¢` : '—'}
+                            </Typography>
+                          </Box>
+                        </Stack>
+
+                        {/* Footer: Ends In + Ann ROI + Action */}
+                        <Stack direction="row" justifyContent="space-between" alignItems="center">
+                          <Tooltip title={market.end_time ? new Date(market.end_time * 1000).toLocaleString() : 'No end date'}>
+                            <Chip
+                              icon={<AccessTime sx={{ fontSize: 11 }} />}
+                              label={formatTimeRemaining(market.end_time)}
+                              size="small"
+                              sx={{ height: 20, fontSize: '0.65rem', backgroundColor: urgentEnd ? alpha('#EF4444', 0.1) : alpha(theme.palette.text.secondary, 0.1), color: urgentEnd ? '#EF4444' : 'text.secondary', '& .MuiChip-icon': { color: urgentEnd ? '#EF4444' : 'text.secondary' } }}
+                            />
+                          </Tooltip>
+                          <Stack direction="row" spacing={0.5} alignItems="center">
+                            {market.ann_roi != null && (
+                              <Tooltip title="Annualized ROI if YES resolves">
+                                <Chip
+                                  label={`${market.ann_roi > 9999 ? '>9999' : market.ann_roi.toLocaleString()}% p.a.`}
+                                  size="small"
+                                  sx={{ height: 20, fontSize: '0.62rem', fontWeight: 700, backgroundColor: market.ann_roi > 1000 ? alpha('#F97316', 0.15) : alpha('#22C55E', 0.15), color: market.ann_roi > 1000 ? '#F97316' : '#22C55E' }}
+                                />
+                              </Tooltip>
+                            )}
+                            <IconButton
+                              size="small"
+                              onClick={e => { e.stopPropagation(); handleMarketClick(market); }}
+                              sx={{ p: 0.3 }}
+                            >
+                              <OpenInNew sx={{ fontSize: 15 }} />
+                            </IconButton>
+                          </Stack>
+                        </Stack>
+                      </Box>
+                    </Paper>
+                  );
+                })}
+              </Box>
+              {/* Grid pagination */}
+              {totalPages > 1 && (
+                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+                  <Pagination count={totalPages} page={page} onChange={(_, p) => setPage(p)} color="primary" showFirstButton showLastButton />
+                </Box>
+              )}
+            </>
+          )}
+        </Box>
+      )}
+
+      {/* ── LIST VIEW ─────────────────────────────────────────────── */}
+      {displayMode === 'list' && (
       <Paper 
         elevation={0}
         sx={{ 
@@ -960,6 +1201,7 @@ export const Screener: React.FC = () => {
           </Box>
         )}
       </Paper>
+      )}
 
       {/* Stats Footer */}
       <Box sx={{ mt: 2, display: 'flex', gap: 3, justifyContent: 'center', flexWrap: 'wrap' }}>
