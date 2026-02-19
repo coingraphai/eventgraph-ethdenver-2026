@@ -9,7 +9,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '';
 
 export type PlatformType = 'all' | 'poly' | 'kalshi' | 'limitless' | 'opiniontrade';
 export type CategoryType = 'all' | 'trending' | 'politics' | 'crypto' | 'sports' | 'entertainment' | 'economy' | 'weather' | 'other';
-export type SortType = 'volume_desc' | 'volume_24h_desc' | 'volume_asc' | 'price_desc' | 'price_asc' | 'ending_soon' | 'newest';
+export type SortType = 'volume_desc' | 'volume_24h_desc' | 'volume_asc' | 'price_desc' | 'price_asc' | 'ending_soon' | 'newest' | 'change_desc' | 'ann_roi_desc';
 
 export interface UnifiedMarket {
   platform: 'poly' | 'kalshi' | 'limitless' | 'opiniontrade';
@@ -28,6 +28,12 @@ export interface UnifiedMarket {
   last_price: number | null;
   no_price?: number | null;
   liquidity?: number | null;
+  price_change_24h?: number | null;
+  price_change_pct_24h?: number | null;
+  volume_24h_change_pct?: number | null;
+  trade_count_24h?: number | null;
+  unique_traders_24h?: number | null;
+  ann_roi?: number | null;
   event_group?: string | null;
   event_group_label?: string | null;
   extra: {

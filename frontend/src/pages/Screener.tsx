@@ -60,6 +60,7 @@ import {
   UnifiedMarket, 
   PlatformType, 
   CategoryType,
+  SortType,
   formatVolume 
 } from '../services/unifiedMarketsApi';
 
@@ -118,6 +119,8 @@ const SORT_OPTIONS = [
   { value: 'price_asc', label: '💸 Price (Low→High)' },
   { value: 'ending_soon', label: '⏰ Ending Soon' },
   { value: 'newest', label: '🆕 Recently Added' },
+  { value: 'change_desc', label: '📈 Most Moving (24h)' },
+  { value: 'ann_roi_desc', label: '🎯 Best ROI' },
 ];
 
 // Time filter options
@@ -161,6 +164,7 @@ export const Screener: React.FC = () => {
   const [timeFilter, setTimeFilter] = useState('all');
   const [watchlist, setWatchlist] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'all' | 'watchlist'>('all');
+  const [activePreset, setActivePreset] = useState<string | null>(null);
 
   // Fetch markets
   const fetchMarkets = useCallback(async () => {
@@ -176,7 +180,7 @@ export const Screener: React.FC = () => {
         page,
         pageSize,
         status: 'open',
-        sort: 'volume_desc',
+        sort: sortBy as SortType,
       });
       
       setMarkets(response.markets);
@@ -187,7 +191,7 @@ export const Screener: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [platform, category, search, minVolume, page, pageSize]);
+  }, [platform, category, search, minVolume, page, pageSize, sortBy]);
 
   useEffect(() => {
     fetchMarkets();
@@ -247,7 +251,7 @@ export const Screener: React.FC = () => {
 
   const handleExport = () => {
     const csv = [
-      ['Market', 'Event', 'Platform', 'Category', 'YES Price', 'NO Price', 'Total Volume', 'Liquidity', 'End Time'].join(','),
+      ['Market', 'Event', 'Platform', 'Category', 'YES Price', 'NO Price', '24h Change %', 'Ann. ROI %', 'Total Volume', 'Vol 24h', 'End Time'].join(','),
       ...markets.map(m => [
         `"${m.title.replace(/"/g, '""')}"`,
         `"${(m.event_group_label || '').replace(/"/g, '""')}"`,
@@ -255,8 +259,10 @@ export const Screener: React.FC = () => {
         m.category || '',
         m.last_price ? (m.last_price * 100).toFixed(1) + '%' : '',
         m.no_price ? (m.no_price * 100).toFixed(1) + '%' : '',
+        m.price_change_pct_24h != null ? m.price_change_pct_24h.toFixed(2) : '',
+        m.ann_roi != null ? m.ann_roi.toFixed(1) : '',
         m.volume_total_usd || 0,
-        m.liquidity || '',
+        m.volume_24h_usd || '',
         m.end_time ? new Date(m.end_time * 1000).toISOString() : '',
       ].join(','))
     ].join('\n');
@@ -271,7 +277,7 @@ export const Screener: React.FC = () => {
 
   const totalPages = Math.ceil(totalMarkets / pageSize);
 
-  // Filter markets by price range and time (client-side)
+  // Filter markets by price range, time, and smart presets (client-side)
   const filteredMarkets = markets.filter(m => {
     // Watchlist mode - only show starred markets
     if (viewMode === 'watchlist') {
@@ -287,6 +293,32 @@ export const Screener: React.FC = () => {
       if (timeFilter === '24h' && diff > 86400) return false;
       if (timeFilter === '7d' && diff > 604800) return false;
       if (timeFilter === '30d' && diff > 2592000) return false;
+    }
+
+    // Smart preset filters
+    if (activePreset) {
+      const price01 = m.last_price || 0;
+      const now = Date.now() / 1000;
+      switch (activePreset) {
+        case 'surging':
+          if ((m.volume_24h_change_pct || 0) <= 100) return false;
+          break;
+        case 'moving':
+          if (Math.abs(m.price_change_pct_24h || 0) <= 5) return false;
+          break;
+        case 'ending_soon':
+          if (!m.end_time || (m.end_time - now) > 604800 || (m.end_time - now) <= 0) return false;
+          break;
+        case 'coin_flips':
+          if (price01 < 0.40 || price01 > 0.60) return false;
+          break;
+        case 'longshots':
+          if (price01 <= 0 || price01 >= 0.10) return false;
+          break;
+        case 'high_activity':
+          if (!((m.unique_traders_24h || 0) > 10 || (m.trade_count_24h || 0) > 20 || (m.volume_24h_usd || 0) > 50000)) return false;
+          break;
+      }
     }
     
     return true;
@@ -534,6 +566,53 @@ export const Screener: React.FC = () => {
         </Collapse>
       </Paper>
 
+      {/* Smart Preset Filter Chips */}
+      <Box sx={{ mb: 2 }}>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5, fontWeight: 600 }}>
+            QUICK FILTERS:
+          </Typography>
+          {[
+            { id: 'surging',       label: '🚀 Surging',       tooltip: 'Volume up 100%+ in 24h' },
+            { id: 'moving',        label: '📈 Moving',        tooltip: 'Price moved 5%+ in 24h' },
+            { id: 'ending_soon',   label: '⏰ Ending Soon',   tooltip: 'Resolves within 7 days' },
+            { id: 'coin_flips',    label: '🎲 Coin Flips',    tooltip: 'Price between 40–60¢ (genuine uncertainty)' },
+            { id: 'longshots',     label: '🎯 Longshots',     tooltip: 'Price under 10¢ (potential 10x+)' },
+            { id: 'high_activity', label: '🔥 High Activity', tooltip: 'High traders or volume in 24h' },
+          ].map(preset => (
+            <Tooltip key={preset.id} title={preset.tooltip}>
+              <Chip
+                label={preset.label}
+                size="small"
+                onClick={() => setActivePreset(activePreset === preset.id ? null : preset.id)}
+                sx={{
+                  cursor: 'pointer',
+                  fontWeight: activePreset === preset.id ? 700 : 400,
+                  backgroundColor: activePreset === preset.id
+                    ? alpha(theme.palette.primary.main, 0.2)
+                    : alpha(theme.palette.background.paper, 0.6),
+                  border: `1px solid ${activePreset === preset.id
+                    ? theme.palette.primary.main
+                    : alpha(theme.palette.divider, 0.2)}`,
+                  color: activePreset === preset.id ? theme.palette.primary.main : 'text.secondary',
+                  '&:hover': {
+                    backgroundColor: alpha(theme.palette.primary.main, 0.12),
+                  },
+                }}
+              />
+            </Tooltip>
+          ))}
+          {activePreset && (
+            <Chip
+              label="✕ Clear"
+              size="small"
+              onClick={() => setActivePreset(null)}
+              sx={{ cursor: 'pointer', color: 'text.disabled' }}
+            />
+          )}
+        </Stack>
+      </Box>
+
       {/* Results Table */}
       <Paper 
         elevation={0}
@@ -550,13 +629,22 @@ export const Screener: React.FC = () => {
             <TableHead>
               <TableRow sx={{ backgroundColor: alpha(theme.palette.primary.main, 0.05) }}>
                 <TableCell sx={{ fontWeight: 600, width: 40 }} align="center">★</TableCell>
-                <TableCell sx={{ fontWeight: 600, width: '40%' }}>Market</TableCell>
+                <TableCell sx={{ fontWeight: 600, width: '38%' }}>Market</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="center">Platform</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="center">Category</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="right">YES Price</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="right">NO Price</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Total Volume</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">Liquidity</TableCell>
+                <TableCell sx={{ fontWeight: 600 }} align="right">
+                  <Tooltip title="Price change in the last 24 hours">
+                    <span>24h Δ</span>
+                  </Tooltip>
+                </TableCell>
+                <TableCell sx={{ fontWeight: 600 }} align="right">
+                  <Tooltip title="Annualized return if YES resolves: ((1-price)/price) × (365/days_left)">
+                    <span>Ann. ROI</span>
+                  </Tooltip>
+                </TableCell>
+                <TableCell sx={{ fontWeight: 600 }} align="right">Volume</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="center">Ends In</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="center">Action</TableCell>
               </TableRow>
@@ -572,7 +660,8 @@ export const Screener: React.FC = () => {
                     <TableCell><Skeleton animation="wave" width={60} /></TableCell>
                     <TableCell><Skeleton animation="wave" width={50} /></TableCell>
                     <TableCell><Skeleton animation="wave" width={50} /></TableCell>
-                    <TableCell><Skeleton animation="wave" width={70} /></TableCell>
+                    <TableCell><Skeleton animation="wave" width={60} /></TableCell>
+                    <TableCell><Skeleton animation="wave" width={60} /></TableCell>
                     <TableCell><Skeleton animation="wave" width={70} /></TableCell>
                     <TableCell><Skeleton animation="wave" width={40} /></TableCell>
                     <TableCell><Skeleton animation="wave" width={40} /></TableCell>
@@ -580,14 +669,14 @@ export const Screener: React.FC = () => {
                 ))
               ) : error ? (
                 <TableRow>
-                  <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
                     <Typography color="error">{error}</Typography>
                     <Button onClick={fetchMarkets} sx={{ mt: 1 }}>Retry</Button>
                   </TableCell>
                 </TableRow>
               ) : filteredMarkets.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
                     {viewMode === 'watchlist' ? (
                       <Box>
                         <StarBorder sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
@@ -741,15 +830,70 @@ export const Screener: React.FC = () => {
                         {formatPrice(market.no_price)}
                       </Typography>
                     </TableCell>
+                    {/* 24h Price Change */}
+                    <TableCell align="right">
+                      {market.price_change_pct_24h != null && market.price_change_pct_24h !== 0 ? (
+                        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.3 }}>
+                          {market.price_change_pct_24h > 0
+                            ? <TrendingUp sx={{ fontSize: 14, color: '#22C55E' }} />
+                            : <TrendingDown sx={{ fontSize: 14, color: '#EF4444' }} />
+                          }
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontFamily: 'monospace',
+                              fontWeight: 600,
+                              fontSize: '0.78rem',
+                              color: market.price_change_pct_24h > 0 ? '#22C55E' : '#EF4444',
+                            }}
+                          >
+                            {market.price_change_pct_24h > 0 ? '+' : ''}{market.price_change_pct_24h.toFixed(1)}%
+                          </Typography>
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" color="text.disabled" sx={{ fontSize: '0.75rem' }}>—</Typography>
+                      )}
+                    </TableCell>
+                    {/* Annualized ROI */}
+                    <TableCell align="right">
+                      {market.ann_roi != null ? (
+                        <Tooltip title="Annualized return if YES resolves at $1">
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              fontFamily: 'monospace',
+                              fontWeight: 600,
+                              fontSize: '0.78rem',
+                              color: market.ann_roi > 1000 ? '#F97316'
+                                : market.ann_roi > 200 ? '#22C55E'
+                                : '#94A3B8',
+                            }}
+                          >
+                            {market.ann_roi > 9999 ? '>9,999' : market.ann_roi.toLocaleString()}%
+                          </Typography>
+                        </Tooltip>
+                      ) : (
+                        <Typography variant="body2" color="text.disabled" sx={{ fontSize: '0.75rem' }}>—</Typography>
+                      )}
+                    </TableCell>
+                    {/* Volume */}
                     <TableCell align="right">
                       <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
                         {formatVolume(market.volume_total_usd)}
                       </Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
-                        {market.liquidity ? formatVolume(market.liquidity) : '—'}
-                      </Typography>
+                      {(market.volume_24h_usd || 0) > 0 && (
+                        <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', fontSize: '0.65rem' }}>
+                          {formatVolume(market.volume_24h_usd!)} 24h
+                          {market.volume_24h_change_pct != null && market.volume_24h_change_pct !== 0 && (
+                            <Box component="span" sx={{
+                              ml: 0.5,
+                              color: market.volume_24h_change_pct > 0 ? '#22C55E' : '#EF4444',
+                            }}>
+                              {market.volume_24h_change_pct > 0 ? '+' : ''}{market.volume_24h_change_pct.toFixed(0)}%
+                            </Box>
+                          )}
+                        </Typography>
+                      )}
                     </TableCell>
                     <TableCell align="center">
                       <Tooltip title={market.end_time ? new Date(market.end_time * 1000).toLocaleString() : 'No end date'}>

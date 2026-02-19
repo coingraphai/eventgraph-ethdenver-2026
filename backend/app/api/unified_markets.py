@@ -91,6 +91,12 @@ class UnifiedMarket(BaseModel):
     last_price: Optional[float] = None
     no_price: Optional[float] = None
     liquidity: Optional[float] = None
+    price_change_24h: Optional[float] = None       # Absolute price change in last 24h
+    price_change_pct_24h: Optional[float] = None   # % price change in last 24h
+    volume_24h_change_pct: Optional[float] = None  # % volume change vs previous 24h
+    trade_count_24h: Optional[int] = None          # Number of trades in last 24h
+    unique_traders_24h: Optional[int] = None       # Unique traders in last 24h
+    ann_roi: Optional[float] = None                # Annualized ROI if YES resolves (% e.g. 2400.0 = 2400%)
     event_group: Optional[str] = None  # Event grouping: event_slug (poly), event_ticker (kalshi), slug-prefix (limitless)
     event_group_label: Optional[str] = None  # Human-readable event name
     extra: Dict[str, Any] = {}
@@ -624,27 +630,33 @@ async def fetch_all_from_silver_db(search=None, min_volume=None) -> tuple:
     def _run_query():
         session = SessionLocal()
         try:
-            where_parts = ["(is_active = true OR status IN ('active', 'open'))"]
+            where_parts = ["(s.is_active = true OR s.status IN ('active', 'open'))"]
             params: Dict[str, Any] = {}
             if min_volume:
-                where_parts.append("volume_total >= :min_vol")
+                where_parts.append("s.volume_total >= :min_vol")
                 params["min_vol"] = float(min_volume)
             if search:
-                where_parts.append("title ILIKE :search")
+                where_parts.append("s.title ILIKE :search")
                 params["search"] = f"%{search}%"
             where_sql = " AND ".join(where_parts)
 
             sql = text(f"""
                 SELECT
-                    source, source_market_id, slug, condition_id,
-                    title, category_name, tags, status,
-                    yes_price, no_price,
-                    volume_24h, volume_7d, volume_30d, volume_total, liquidity,
-                    start_date, end_date,
-                    image_url, source_url, extra_data
-                FROM predictions_silver.markets
+                    s.source, s.source_market_id, s.slug, s.condition_id,
+                    s.title, s.category_name, s.tags, s.status,
+                    s.yes_price, s.no_price,
+                    s.volume_24h, s.volume_7d, s.volume_30d, s.volume_total, s.liquidity,
+                    s.start_date, s.end_date,
+                    s.image_url, s.source_url, s.extra_data,
+                    g.price_change_24h, g.price_change_pct_24h,
+                    g.volume_change_pct_24h,
+                    g.trade_count_24h, g.unique_traders_24h,
+                    g.volume_24h AS g_volume_24h
+                FROM predictions_silver.markets s
+                LEFT JOIN predictions_gold.market_detail_cache g
+                    ON s.source = g.source AND s.source_market_id = g.source_market_id
                 WHERE {where_sql}
-                ORDER BY volume_total DESC NULLS LAST
+                ORDER BY s.volume_total DESC NULLS LAST
                 LIMIT 2000
             """)
             rows = session.execute(sql, params).fetchall()
@@ -670,6 +682,32 @@ async def fetch_all_from_silver_db(search=None, min_volume=None) -> tuple:
         raw_liq = float(row.liquidity) if row.liquidity is not None else None
         # Limitless stores liquidity in USDC base units (6 decimals) — normalize to USD
         liq = (raw_liq / 1_000_000) if (raw_liq and row.source == "limitless" and raw_liq > 1_000_000) else raw_liq
+
+        # Gold cache analytics fields (price change, trade activity)
+        price_chg_24h = float(row.price_change_24h) if getattr(row, 'price_change_24h', None) is not None else None
+        price_chg_pct_24h = float(row.price_change_pct_24h) if getattr(row, 'price_change_pct_24h', None) is not None else None
+        vol_chg_pct = float(row.volume_change_pct_24h) if getattr(row, 'volume_change_pct_24h', None) is not None else None
+        trade_cnt = int(row.trade_count_24h) if getattr(row, 'trade_count_24h', None) is not None else None
+        uniq_traders = int(row.unique_traders_24h) if getattr(row, 'unique_traders_24h', None) is not None else None
+        # Prefer gold cache volume_24h (has Kalshi data), fall back to silver
+        g_vol_24h = float(row.g_volume_24h) if getattr(row, 'g_volume_24h', None) else None
+        vol_24h_final = g_vol_24h or (float(row.volume_24h) if row.volume_24h else None)
+
+        # Compute Annualized ROI: if YES resolves, return = (1-price)/price annualized
+        ann_roi = None
+        if yes_p and 0 < yes_p < 1 and row.end_date:
+            try:
+                import datetime as _dt
+                # Handle both date and datetime objects
+                if hasattr(row.end_date, 'hour'):
+                    end_dt = row.end_date.replace(tzinfo=None)
+                else:
+                    end_dt = _dt.datetime.combine(row.end_date, _dt.time.min)
+                days_left = (end_dt - _dt.datetime.utcnow()).days
+                if days_left > 0:
+                    ann_roi = round(((1 - yes_p) / yes_p) * (365 / days_left) * 100, 1)
+            except Exception:
+                pass
 
         event_group = None
         event_group_label = None
@@ -733,7 +771,7 @@ async def fetch_all_from_silver_db(search=None, min_volume=None) -> tuple:
                 end_time=end_ts,
                 close_time=end_ts,
                 volume_total_usd=float(row.volume_total or 0),
-                volume_24h_usd=float(row.volume_24h or 0) if row.volume_24h else None,
+                volume_24h_usd=vol_24h_final,
                 volume_1_week_usd=float(row.volume_7d or 0) if row.volume_7d else None,
                 volume_1_month_usd=float(row.volume_30d or 0) if row.volume_30d else None,
                 category=row.category_name or categorize_market(row.title, list(row.tags) if row.tags else []),
@@ -741,6 +779,12 @@ async def fetch_all_from_silver_db(search=None, min_volume=None) -> tuple:
                 last_price=yes_p,
                 no_price=no_p,
                 liquidity=liq,
+                price_change_24h=price_chg_24h,
+                price_change_pct_24h=price_chg_pct_24h,
+                volume_24h_change_pct=vol_chg_pct,
+                trade_count_24h=trade_cnt,
+                unique_traders_24h=uniq_traders,
+                ann_roi=ann_roi,
                 event_group=event_group,
                 event_group_label=event_group_label,
                 extra=extra,
@@ -945,6 +989,20 @@ async def get_unified_markets(
         # Sort all markets
         if sort == "volume_24h_desc":
             all_markets.sort(key=lambda m: m.volume_24h_usd or 0, reverse=True)
+        elif sort == "volume_asc":
+            all_markets.sort(key=lambda m: m.volume_total_usd, reverse=False)
+        elif sort == "price_desc":
+            all_markets.sort(key=lambda m: m.last_price or 0, reverse=True)
+        elif sort == "price_asc":
+            all_markets.sort(key=lambda m: m.last_price or 0, reverse=False)
+        elif sort == "ending_soon":
+            all_markets.sort(key=lambda m: m.end_time or 9999999999)
+        elif sort == "newest":
+            all_markets.sort(key=lambda m: m.end_time or 0, reverse=True)
+        elif sort == "change_desc":
+            all_markets.sort(key=lambda m: abs(m.price_change_pct_24h or 0), reverse=True)
+        elif sort == "ann_roi_desc":
+            all_markets.sort(key=lambda m: m.ann_roi or 0, reverse=True)
         else:  # volume_desc (default)
             all_markets.sort(key=lambda m: m.volume_total_usd, reverse=True)
         
