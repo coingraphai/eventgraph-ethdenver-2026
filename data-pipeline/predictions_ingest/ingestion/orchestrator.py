@@ -343,14 +343,55 @@ class TradesFetcher:
         self.since_hours = getattr(self.settings, 'trades_since_hours', 24)
         self.min_usd = getattr(self.settings, 'trades_min_usd', 1000)
         self.max_trades_per_market = getattr(self.settings, 'trades_max_per_market', 1000)
+        # Concurrent trades fetching: 10 markets at a time (safe for 75 QPS shared with prices)
+        self.trades_concurrency = getattr(self.settings, 'trades_concurrency', 10)
     
+    async def _fetch_trades_for_market(
+        self,
+        market,
+        since_time: datetime,
+        run_id: str,
+        semaphore: asyncio.Semaphore,
+    ) -> tuple[int, list]:
+        """Fetch trades for a single market with semaphore concurrency control."""
+        async with semaphore:
+            try:
+                raw_trades = await self.client.fetch_all_trades(
+                    market_id=market.source_market_id,
+                    since=since_time,
+                    max_records=self.max_trades_per_market,
+                )
+                if not raw_trades:
+                    return 0, []
+                
+                await self.bronze_writer.write_batch(
+                    records=raw_trades,
+                    source=self.source,
+                    endpoint=f"/{self.source.value}/trades/{market.source_market_id}",
+                    run_id=run_id,
+                )
+                
+                filtered = []
+                for raw_trade in raw_trades:
+                    try:
+                        trade = self.client.normalize_trade(raw_trade, market.source_market_id)
+                        if trade.total_value and float(trade.total_value) >= self.min_usd:
+                            filtered.append(trade)
+                    except Exception:
+                        pass
+                
+                return len(raw_trades), filtered
+            except Exception as e:
+                logger.debug("Failed to fetch trades for market", market=market.source_market_id, error=str(e))
+                return 0, []
+
     async def fetch_trades_batch(
         self,
         markets: list,
         run_id: str,
     ) -> tuple[int, int]:
         """
-        Fetch recent trades for top markets with volume/time filters.
+        Fetch recent trades for top markets concurrently with volume/time filters.
         
         Returns:
             Tuple of (trades_fetched, trades_inserted)
@@ -365,8 +406,9 @@ class TradesFetcher:
             return 0, 0
         
         logger.info(
-            "Fetching trades for top markets",
+            "Fetching trades for top markets (concurrent)",
             top_n=len(top_markets),
+            concurrency=self.trades_concurrency,
             since_hours=self.since_hours,
             min_usd=self.min_usd,
             source=self.source.value
@@ -375,50 +417,24 @@ class TradesFetcher:
         # Step 2: Calculate time cutoff
         since_time = datetime.utcnow() - timedelta(hours=self.since_hours)
         
-        # Step 3: Fetch trades for each market
-        trades_fetched = 0
-        all_trades = []
+        # Step 3: Fetch trades concurrently with semaphore
+        semaphore = asyncio.Semaphore(self.trades_concurrency)
+        tasks = [
+            self._fetch_trades_for_market(market, since_time, run_id, semaphore)
+            for market in top_markets
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=False)
         
-        for i, market in enumerate(top_markets):
-            try:
-                # Fetch trades for this market with limit
-                raw_trades = await self.client.fetch_all_trades(
-                    market_id=market.source_market_id,
-                    since=since_time,
-                    max_records=self.max_trades_per_market,  # Configurable limit per market
-                )
-                
-                if raw_trades:
-                    # Write raw trades to Bronze
-                    inserted, _ = await self.bronze_writer.write_batch(
-                        records=raw_trades,
-                        source=self.source,
-                        endpoint=f"/{self.source.value}/trades/{market.source_market_id}",
-                        run_id=run_id,
-                    )
-                    
-                    # Normalize trades
-                    for raw_trade in raw_trades:
-                        try:
-                            trade = self.client.normalize_trade(raw_trade, market.source_market_id)
-                            
-                            # Apply volume filter
-                            if trade.total_value and float(trade.total_value) >= self.min_usd:
-                                all_trades.append(trade)
-                        except Exception as e:
-                            logger.debug("Failed to normalize trade", error=str(e), market=market.source_market_id)
-                    
-                    trades_fetched += len(raw_trades)
-                    
-                    if (i + 1) % 10 == 0:
-                        logger.info(
-                            f"Processed trades for {i + 1}/{len(top_markets)} markets",
-                            trades_fetched=trades_fetched,
-                            trades_filtered=len(all_trades)
-                        )
-                        
-            except Exception as e:
-                logger.debug("Failed to fetch trades for market", market=market.source_market_id, error=str(e))
+        trades_fetched = sum(r[0] for r in results)
+        all_trades = [trade for _, trades in results for trade in trades]
+        
+        logger.info(
+            "Concurrent trades fetch done",
+            markets=len(top_markets),
+            fetched=trades_fetched,
+            filtered=len(all_trades),
+            source=self.source.value,
+        )
         
         # Step 4: Batch insert trades to Silver
         trades_inserted = 0
