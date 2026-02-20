@@ -13,7 +13,6 @@ Limit:    100 traders
 """
 
 import asyncio
-import httpx
 import time
 import logging
 from typing import Optional, List
@@ -27,9 +26,6 @@ from app.database.session import get_db
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-DOME_API_BASE = "https://api.domeapi.io/v1"
-DOME_API_KEY  = "***REDACTED_DOME_KEY***"
 
 _cache: dict = {"data": None, "ts": 0.0, "ttl": 600.0}  # 10-minute cache
 
@@ -89,7 +85,7 @@ class EnrichedTrader(BaseModel):
     is_active_7d: bool
     last_trade: Optional[str] = None
 
-    # Dome API enrichment
+    # Dome enrichment fields (kept for API compatibility, always empty)
     handle: Optional[str] = None
     total_winnings: float = 0.0
     biggest_win: float = 0.0
@@ -120,75 +116,7 @@ def _fmt_wallet(w: str) -> str:
     return w[:12] + "…" if len(w) > 12 else w
 
 
-async def _enrich_one(
-    client: httpx.AsyncClient,
-    sem: asyncio.Semaphore,
-    wallet: str,
-    platform: str,
-) -> dict:
-    """Fetch Dome API enrichment for a single wallet (Polymarket only)."""
-    if platform != "polymarket":
-        return {"dome_enriched": False}
-
-    result = {
-        "dome_enriched": False,
-        "handle": None,
-        "total_winnings": 0.0,
-        "biggest_win": 0.0,
-        "markets_won": 0,
-    }
-
-    async with sem:
-        # ── Activity (REDEEM = winnings cashed out) ─────────────────────────
-        try:
-            r = await client.get(
-                f"{DOME_API_BASE}/polymarket/activity?user={wallet}&limit=100",
-                timeout=10,
-            )
-            if r.status_code == 200:
-                acts = r.json().get("activities", [])
-                winnings = [
-                    a.get("price", 0) * a.get("shares_normalized", 0)
-                    for a in acts
-                    if a.get("side") == "REDEEM"
-                ]
-                if winnings:
-                    result["total_winnings"] = round(sum(winnings), 2)
-                    result["biggest_win"]    = round(max(winnings), 2)
-                    result["markets_won"]    = len(winnings)
-                result["dome_enriched"] = True
-        except Exception as e:
-            logger.debug(f"Activity fetch failed {wallet[:10]}: {e}")
-
-        # ── Wallet handle ────────────────────────────────────────────────────
-        try:
-            r = await client.get(
-                f"{DOME_API_BASE}/polymarket/wallet?eoa={wallet}",
-                timeout=8,
-            )
-            if r.status_code == 200:
-                d = r.json()
-                result["handle"] = d.get("handle") or d.get("pseudonym") or None
-        except Exception:
-            pass
-
-        await asyncio.sleep(0.05)  # gentle on the API
-        return result
-
-
-async def _enrich_all(db_rows: list) -> list:
-    """Concurrently enrich all traders — max 15 simultaneous Dome API calls."""
-    sem = asyncio.Semaphore(15)
-    async with httpx.AsyncClient(
-        timeout=12,
-        headers={"X-API-KEY": DOME_API_KEY},
-        limits=httpx.Limits(max_connections=20, max_keepalive_connections=15),
-    ) as client:
-        tasks = [
-            _enrich_one(client, sem, row["wallet_address"], row["platform"])
-            for row in db_rows
-        ]
-        return await asyncio.gather(*tasks, return_exceptions=True)
+# Dome API enrichment removed — all data comes from predictions_silver.trades
 
 
 # ── Endpoint ───────────────────────────────────────────────────────────────────
@@ -250,29 +178,18 @@ def get_leaderboard_enriched(db: Session = Depends(get_db)):
             "last_trade":     last_trade_str,
         })
 
-    # ── Dome API enrichment ───────────────────────────────────────────────────
-    enrichments = asyncio.run(_enrich_all(db_traders))
-
+    # Build traders without Dome API enrichment
     traders = []
-    enriched_count = 0
-    for t, enrich in zip(db_traders, enrichments):
-        if isinstance(enrich, Exception):
-            enrich = {}
-        if enrich.get("dome_enriched"):
-            enriched_count += 1
-
-        handle = enrich.get("handle")
-        w = t["wallet_address"]
-        display_name = handle if handle else _fmt_wallet(w)
-
+    for t in db_traders:
+        display_name = _fmt_wallet(t["wallet_address"])
         traders.append(EnrichedTrader(
             **t,
             display_name=display_name,
-            handle=handle,
-            total_winnings=float(enrich.get("total_winnings", 0)),
-            biggest_win=float(enrich.get("biggest_win", 0)),
-            markets_won=int(enrich.get("markets_won", 0)),
-            dome_enriched=bool(enrich.get("dome_enriched")),
+            handle=None,
+            total_winnings=0.0,
+            biggest_win=0.0,
+            markets_won=0,
+            dome_enriched=False,
         ))
 
     response = EnrichedResponse(
@@ -281,11 +198,11 @@ def get_leaderboard_enriched(db: Session = Depends(get_db)):
         count=len(traders),
         total_unique_traders=total_unique,
         query_ms=int((time.time() - t0) * 1000),
-        enriched_count=enriched_count,
+        enriched_count=0,
         updated_at=datetime.now(timezone.utc).isoformat(),
     )
 
     _cache["data"] = response
     _cache["ts"]   = time.time()
-    logger.info(f"Leaderboard enriched: done {len(traders)} traders, {enriched_count} enriched, {response.query_ms}ms")
+    logger.info(f"Leaderboard enriched: done {len(traders)} traders (DB only), {response.query_ms}ms")
     return response

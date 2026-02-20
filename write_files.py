@@ -1,8 +1,233 @@
+#!/usr/bin/env python3
+"""Helper script: write new DB-backed API files."""
+import os
+
+BASE = os.path.dirname(__file__)
+BACKEND_API = os.path.join(BASE, "backend", "app", "api")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. intelligence_dashboard.py
+# ─────────────────────────────────────────────────────────────────────────────
+INTELLIGENCE = """\
+\"\"\"
+Intelligence Dashboard - Database-backed
+Queries predictions_silver.markets for aggregate market intelligence.
+No live external API calls. Same JSON shape as before.
+\"\"\"
+import time
+import logging
+from typing import Dict, Any
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+from sqlalchemy import text
+from datetime import datetime, timezone
+
+from app.database.session import get_db
+
+logger = logging.getLogger(__name__)
+router = APIRouter()
+
+_dashboard_cache: Dict[str, Any] = {"data": None, "ts": 0.0, "ttl": 300.0}
+
+PLATFORM_DISPLAY = {
+    "polymarket":   "Polymarket",
+    "kalshi":       "KALSHI",
+    "limitless":    "Limitless",
+    "opiniontrade": "OpinionTrade",
+}
+
+
+def _fmt_cat(cat: str) -> str:
+    if not cat:
+        return "Other"
+    return cat.replace("-", " ").replace("_", " ").title()
+
+
+# Stubs so main.py imports don't break
+async def warm_intelligence_cache():
+    \"\"\"No-op: cache built on first DB request.\"\"\"
+    pass
+
+
+def start_intelligence_refresh():
+    \"\"\"No-op.\"\"\"
+    pass
+
+
+def stop_intelligence_refresh():
+    \"\"\"No-op.\"\"\"
+    pass
+
+
+@router.get("/intelligence")
+async def get_intelligence_dashboard(
+    refresh: bool = False,
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    \"\"\"Return aggregated market intelligence from the database. 5-min cache.\"\"\"
+    t0 = time.time()
+
+    if (
+        not refresh
+        and _dashboard_cache["data"]
+        and (time.time() - _dashboard_cache["ts"]) < _dashboard_cache["ttl"]
+    ):
+        logger.info("Intelligence: cache hit")
+        return _dashboard_cache["data"]
+
+    try:
+        # Per-platform aggregate stats
+        plat_rows = db.execute(text(\"\"\"
+            SELECT
+                source                          AS platform,
+                COUNT(*)                        AS market_count,
+                COALESCE(SUM(volume_total), 0)  AS total_volume,
+                COALESCE(SUM(volume_24h),   0)  AS volume_24h,
+                COALESCE(SUM(liquidity),    0)  AS total_liquidity,
+                AVG(COALESCE(yes_price, 0))     AS avg_yes_price,
+                COUNT(DISTINCT category_name)   AS categories_count
+            FROM predictions_silver.markets
+            WHERE is_active = TRUE
+            GROUP BY source
+            ORDER BY total_volume DESC NULLS LAST
+        \"\"\")).fetchall()
+
+        total_markets    = sum(int(r.market_count  or 0) for r in plat_rows)
+        total_volume     = sum(float(r.total_volume or 0) for r in plat_rows)
+        total_volume_24h = sum(float(r.volume_24h  or 0) for r in plat_rows)
+        platform_counts  = {r.platform: int(r.market_count  or 0) for r in plat_rows}
+        platform_volumes = {r.platform: float(r.total_volume or 0) for r in plat_rows}
+
+        # Category stats
+        cat_rows = db.execute(text(\"\"\"
+            SELECT
+                COALESCE(category_name, 'other') AS category,
+                COUNT(*)                         AS market_count,
+                COALESCE(SUM(volume_total), 0)   AS total_volume
+            FROM predictions_silver.markets
+            WHERE is_active = TRUE
+            GROUP BY COALESCE(category_name, 'other')
+            ORDER BY total_volume DESC NULLS LAST
+            LIMIT 20
+        \"\"\")).fetchall()
+
+        categories_dict: Dict[str, Any] = {}
+        category_intelligence = []
+        for cat in cat_rows:
+            vol_share = (
+                float(cat.total_volume or 0) / total_volume * 100
+                if total_volume > 0 else 0
+            )
+            categories_dict[cat.category] = {
+                "market_count": int(cat.market_count or 0),
+                "volume":       float(cat.total_volume or 0),
+                "volume_share": round(vol_share, 2),
+            }
+            category_intelligence.append({
+                "category":     cat.category,
+                "display_name": _fmt_cat(cat.category),
+                "market_count": int(cat.market_count or 0),
+                "total_volume": float(cat.total_volume or 0),
+                "volume_share": round(vol_share, 2),
+            })
+
+        # Trending markets (top by 24h volume)
+        trend_rows = db.execute(text(\"\"\"
+            SELECT
+                source_market_id,
+                source       AS platform,
+                question     AS title,
+                yes_price    AS probability,
+                volume_24h,
+                volume_total,
+                source_url
+            FROM predictions_silver.markets
+            WHERE is_active = TRUE
+              AND volume_24h IS NOT NULL
+              AND volume_24h > 0
+            ORDER BY volume_24h DESC NULLS LAST
+            LIMIT 10
+        \"\"\")).fetchall()
+
+        trending_markets = [
+            {
+                "id":               r.source_market_id,
+                "title":            r.title or "",
+                "probability":      float(r.probability or 0.5),
+                "price_change_24h": 0,
+                "volume":           float(r.volume_24h or 0),
+                "volume_24h":       float(r.volume_24h or 0),
+                "platform":         r.platform or "polymarket",
+                "slug":             r.source_market_id,
+                "source_url":       r.source_url,
+            }
+            for r in trend_rows
+        ]
+
+        # Platform comparison
+        platform_comparison = []
+        for r in plat_rows:
+            vol       = float(r.total_volume or 0)
+            liq       = float(r.total_liquidity or 0)
+            liq_score = min(100.0, (liq / max(vol, 1)) * 100) if vol > 0 else 0
+            platform_comparison.append({
+                "platform":         r.platform,
+                "display_name":     PLATFORM_DISPLAY.get(r.platform, r.platform.title()),
+                "total_markets":    int(r.market_count or 0),
+                "estimated_volume": vol,
+                "sample_volume":    vol,
+                "total_liquidity":  liq,
+                "avg_price":        round(float(r.avg_yes_price or 0.5), 4),
+                "categories_count": int(r.categories_count or 0),
+                "liquidity_score":  round(liq_score, 1),
+            })
+
+        data: Dict[str, Any] = {
+            "global_metrics": {
+                "total_markets":              total_markets,
+                "estimated_total_volume":     total_volume,
+                "volume_24h":                 total_volume_24h,
+                "platforms_active":           len(plat_rows),
+                "sample_count":               total_markets,
+                "categories":                 categories_dict,
+                "platform_counts":            platform_counts,
+                "platform_estimated_volumes": platform_volumes,
+                "platform_volumes":           platform_volumes,
+            },
+            "trending_markets":        trending_markets,
+            "category_intelligence":   category_intelligence,
+            "platform_comparison":     platform_comparison,
+            "arbitrage_opportunities": [],
+            "data_source": "database",
+            "query_ms":    int((time.time() - t0) * 1000),
+            "updated_at":  datetime.now(timezone.utc).isoformat(),
+        }
+
+        _dashboard_cache["data"] = data
+        _dashboard_cache["ts"]   = time.time()
+        logger.info(
+            "Intelligence: DB query OK in %dms - %d markets, %d platforms",
+            data["query_ms"], total_markets, len(platform_comparison),
+        )
+        return data
+
+    except Exception as exc:
+        logger.error("Intelligence dashboard DB error: %s", exc)
+        if _dashboard_cache["data"]:
+            logger.warning("Intelligence: returning stale cache after DB error")
+            return _dashboard_cache["data"]
+        raise
 """
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. events_db.py
+# ─────────────────────────────────────────────────────────────────────────────
+EVENTS_DB = """\
+\"\"\"
 Events API - Database-backed
 Fetches events from predictions_gold.events_snapshot.
 No live API calls, no in-memory cache of live data.
-"""
+\"\"\"
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -16,7 +241,7 @@ router = APIRouter()
 
 
 def slug_to_title(event_slug: str) -> str:
-    """Convert event_slug to a human-readable title."""
+    \"\"\"Convert event_slug to a human-readable title.\"\"\"
     if not event_slug:
         return "Unknown Event"
     words = event_slug.replace("-", " ").split()
@@ -41,9 +266,9 @@ def stop_merged_events_refresh():
 
 @router.get("/events/stats")
 async def get_events_stats(db: Session = Depends(get_db)) -> Dict[str, Any]:
-    """Aggregate event/market stats directly from predictions_gold.events_snapshot."""
+    \"\"\"Aggregate event/market stats directly from predictions_gold.events_snapshot.\"\"\"
     try:
-        result = db.execute(text("""
+        result = db.execute(text(\"\"\"
             WITH latest AS (
                 SELECT DISTINCT ON (event_id, platform)
                     event_id, platform, market_count, total_volume, volume_24h
@@ -63,7 +288,7 @@ async def get_events_stats(db: Session = Depends(get_db)) -> Dict[str, Any]:
                 COALESCE(SUM(CASE WHEN platform='limitless'    THEN market_count ELSE 0 END),0) AS lim_mkt,
                 COALESCE(SUM(CASE WHEN platform='opiniontrade' THEN market_count ELSE 0 END),0) AS ot_mkt
             FROM latest
-        """)).fetchone()
+        \"\"\")).fetchone()
 
         total     = int(result.total_events or 0)
         total_vol = float(result.total_volume or 0)
@@ -103,7 +328,7 @@ async def get_event_categories(
     platform: str = Query("all"),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Get available categories from predictions_gold.events_snapshot."""
+    \"\"\"Get available categories from predictions_gold.events_snapshot.\"\"\"
     try:
         params: Dict[str, Any] = {}
         where = "WHERE category IS NOT NULL AND category != '' AND market_count > 0"
@@ -111,13 +336,13 @@ async def get_event_categories(
             where += " AND platform = :platform"
             params["platform"] = platform
 
-        rows = db.execute(text(f"""
+        rows = db.execute(text(f\"\"\"
             SELECT category, COUNT(DISTINCT event_id) AS cnt
             FROM predictions_gold.events_snapshot
             {where}
             GROUP BY category
             ORDER BY cnt DESC
-        """), params).fetchall()
+        \"\"\"), params).fetchall()
 
         categories = [
             {
@@ -144,7 +369,7 @@ async def list_events(
     sort_by:  str = Query("volume"),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """List events from predictions_gold.events_snapshot. Pure DB, no cache."""
+    \"\"\"List events from predictions_gold.events_snapshot. Pure DB, no cache.\"\"\"
     try:
         offset = (page - 1) * page_size
         params: Dict[str, Any] = {"limit": page_size, "offset": offset}
@@ -172,26 +397,26 @@ async def list_events(
         order_by = sort_map.get(sort_by, "total_volume DESC NULLS LAST")
 
         # Count
-        total = db.execute(text(f"""
+        total = db.execute(text(f\"\"\"
             SELECT COUNT(*) FROM (
                 SELECT DISTINCT ON (event_id, platform) event_id, platform
                 FROM predictions_gold.events_snapshot
                 {where}
                 ORDER BY event_id, platform, snapshot_at DESC
             ) t
-        """), count_params).scalar() or 0
+        \"\"\"), count_params).scalar() or 0
 
         # Platform counts
-        pcnt_rows = db.execute(text(f"""
+        pcnt_rows = db.execute(text(f\"\"\"
             SELECT platform, COUNT(DISTINCT event_id) AS cnt
             FROM predictions_gold.events_snapshot
             {where}
             GROUP BY platform
-        """), count_params).fetchall()
+        \"\"\"), count_params).fetchall()
         platform_counts_map = {r.platform: r.cnt for r in pcnt_rows}
 
         # Aggregate metrics
-        agg = db.execute(text(f"""
+        agg = db.execute(text(f\"\"\"
             WITH latest AS (
                 SELECT DISTINCT ON (event_id, platform) *
                 FROM predictions_gold.events_snapshot
@@ -214,7 +439,7 @@ async def list_events(
                 COALESCE(SUM(CASE WHEN platform='opiniontrade' THEN market_count ELSE 0 END),0) AS ot_mkt,
                 COALESCE(SUM(CASE WHEN platform='opiniontrade' THEN total_volume  ELSE 0 END),0) AS ot_vol
             FROM latest
-        """), count_params).fetchone()
+        \"\"\"), count_params).fetchone()
 
         aggregate_metrics = {
             "total_events":         int(agg.total_events   or 0),
@@ -235,7 +460,7 @@ async def list_events(
         }
 
         # Events list (CTE to allow custom ORDER BY after DISTINCT ON)
-        rows = db.execute(text(f"""
+        rows = db.execute(text(f\"\"\"
             WITH latest_events AS (
                 SELECT DISTINCT ON (event_id, platform) *
                 FROM predictions_gold.events_snapshot
@@ -245,7 +470,7 @@ async def list_events(
             SELECT * FROM latest_events
             ORDER BY {order_by}
             LIMIT :limit OFFSET :offset
-        """), params).fetchall()
+        \"\"\"), params).fetchall()
 
         # Top market per event from event_markets_latest
         top_markets: Dict[Any, Any] = {}
@@ -254,7 +479,7 @@ async def list_events(
                 f"(event_id = '{r.event_id}' AND platform = '{r.platform}')" for r in rows
             )
             try:
-                tm_rows = db.execute(text(f"""
+                tm_rows = db.execute(text(f\"\"\"
                     SELECT DISTINCT ON (event_id, platform)
                         event_id, platform, market_id, market_title,
                         yes_price, no_price, volume_total, liquidity, source_url
@@ -262,7 +487,7 @@ async def list_events(
                     WHERE ({conditions})
                       AND yes_price IS NOT NULL AND yes_price > 0
                     ORDER BY event_id, platform, yes_price DESC
-                """)).fetchall()
+                \"\"\")).fetchall()
                 for tm in tm_rows:
                     top_markets[(tm.event_id, tm.platform)] = {
                         "market_id":  tm.market_id,
@@ -330,9 +555,9 @@ async def get_event_analytics(
     event_id: str,
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Get analytics for an event from predictions_silver.markets."""
+    \"\"\"Get analytics for an event from predictions_silver.markets.\"\"\"
     try:
-        result = db.execute(text("""
+        result = db.execute(text(\"\"\"
             SELECT
                 COUNT(*) AS market_count,
                 SUM(volume_total) AS total_volume,
@@ -347,7 +572,7 @@ async def get_event_analytics(
                   source_market_id            = :event_id OR
                   SPLIT_PART(source_market_id, '-', 1) = :event_id
               )
-        """), {"platform": platform, "event_id": event_id}).fetchone()
+        \"\"\"), {"platform": platform, "event_id": event_id}).fetchone()
 
         if not result or result.market_count == 0:
             raise HTTPException(status_code=404, detail="Event not found")
@@ -376,7 +601,7 @@ async def get_event_details(
     force_refresh: bool = False,
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Get a single event with all its markets from the database."""
+    \"\"\"Get a single event with all its markets from the database.\"\"\"
     try:
         platform_map = {
             "poly": "polymarket", "polymarket": "polymarket",
@@ -386,7 +611,7 @@ async def get_event_details(
         platform = platform_map.get(platform.lower(), platform)
 
         # Event metadata
-        event = db.execute(text("""
+        event = db.execute(text(\"\"\"
             SELECT es.*,
                    e.title       AS actual_event_title,
                    e.description AS actual_event_description,
@@ -397,13 +622,13 @@ async def get_event_details(
             WHERE es.event_id = :event_id AND es.platform = :platform
             ORDER BY es.snapshot_at DESC
             LIMIT 1
-        """), {"event_id": event_id, "platform": platform}).fetchone()
+        \"\"\"), {"event_id": event_id, "platform": platform}).fetchone()
 
         if not event:
             raise HTTPException(status_code=404, detail="Event not found")
 
         # Markets from silver layer
-        mkt_rows = db.execute(text("""
+        mkt_rows = db.execute(text(\"\"\"
             SELECT
                 id, source_market_id, question, description,
                 yes_price, volume_24h, volume_total, volume_7d,
@@ -419,7 +644,7 @@ async def get_event_details(
               )
             ORDER BY volume_total DESC NULLS LAST
             LIMIT 100
-        """), {"platform": platform, "event_id": event_id}).fetchall()
+        \"\"\"), {"platform": platform, "event_id": event_id}).fetchall()
 
         markets_list = []
         for m in mkt_rows:
@@ -481,3 +706,17 @@ async def get_event_details(
     except Exception as e:
         logger.error("Error getting event details: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+"""
+
+# Write files
+files = {
+    os.path.join(BACKEND_API, "intelligence_dashboard.py"): INTELLIGENCE,
+    os.path.join(BACKEND_API, "events_db.py"): EVENTS_DB,
+}
+
+for path, content in files.items():
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    print(f"Written: {path} ({len(content)} chars)")
+
+print("Done.")

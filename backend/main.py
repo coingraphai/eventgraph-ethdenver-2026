@@ -34,23 +34,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"❌ Database initialization error: {e}")
     
-    # Initialize Production Cache Service (L1 memory + L2 PostgreSQL)
-    # Non-blocking: let server start while cache loads in background
-    try:
-        from app.services.production_cache_service import initialize_production_cache
-        db_pool = await get_async_pool()
-        
-        async def _init_cache_bg():
-            try:
-                await initialize_production_cache(db_pool)
-                logger.info("✅ Production cache service initialized (background)")
-            except Exception as e:
-                logger.warning(f"⚠️ Background cache init failed: {e}")
-        
-        asyncio.create_task(_init_cache_bg())
-        logger.info("✅ Production cache initialization started (non-blocking)")
-    except Exception as e:
-        logger.warning(f"⚠️ Could not initialize production cache: {e}")
     
     # Check MCP Client
     try:
@@ -72,85 +55,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ Could not initialize Claude service: {e}")
     
-    # Warm events cache on startup (non-blocking) - ENABLED FOR CHAT/EVENTS FEATURES
-    # NOTE: These API calls are for chat/events features and event detail pages
-    # Dashboard uses database exclusively
-    try:
-        from app.api.events import warm_events_cache, start_background_refresh
-        logger.info("🔄 Warming events cache in background...")
-        asyncio.create_task(warm_events_cache())
-        # Start background refresh (every 15 minutes)
-        start_background_refresh()
-        logger.info("✅ Events cache warming started with background refresh")
-    except Exception as e:
-        logger.warning(f"⚠️ Could not warm events cache: {e}")
-    
-    # Warm merged events cache (for Markets page - all platforms combined)
-    try:
-        from app.api.events_db import warm_merged_events_cache, start_merged_events_refresh
-        logger.info("🔥 Warming merged events cache (all platforms) in background...")
-        asyncio.create_task(warm_merged_events_cache())
-        # Start background refresh (every 30 minutes) to prevent cold starts
-        start_merged_events_refresh()
-        logger.info("✅ Merged events cache warming started with background refresh")
-    except Exception as e:
-        logger.warning(f"⚠️ Could not warm merged events cache: {e}")
-    
-    # Pre-warm Intelligence Dashboard cache for instant loading
-    try:
-        from app.api.intelligence_dashboard import warm_intelligence_cache, start_intelligence_refresh
-        logger.info("🔥 Warming intelligence dashboard cache in background...")
-        asyncio.create_task(warm_intelligence_cache())
-        # Start background refresh (every 4 minutes)
-        start_intelligence_refresh()
-        logger.info("✅ Intelligence dashboard cache warming started")
-    except Exception as e:
-        logger.warning(f"⚠️ Could not warm intelligence cache: {e}")
-    
-    # Pre-warm Events page cache using Production Cache Service
-    # This loads from PostgreSQL first (instant), then refreshes from API in background
-    try:
-        from app.services.production_cache_service import warm_all_caches
-        
-        async def warm_with_production_cache():
-            """
-            Production-grade cache warming:
-            1. Load from PostgreSQL (instant - <1s)
-            2. Refresh from APIs in background (no blocking)
-            """
-            logger.info("🔥 Warming production cache (all platforms)...")
-            try:
-                await warm_all_caches()
-                logger.info("✅ Production cache warming complete")
-            except Exception as e:
-                logger.warning(f"⚠️ Production cache warming failed: {e}")
-        
-        asyncio.create_task(warm_with_production_cache())
-        logger.info("✅ Production cache warming started in background")
-    except Exception as e:
-        logger.warning(f"⚠️ Could not warm production cache: {e}")
-    except Exception as e:
-        logger.warning(f"⚠️ Could not warm events cache: {e}")
-    
-    logger.info("✅ API started successfully")
+    logger.info("✅ API started successfully (database-only mode, no live API cache warming)")
     
     yield
     
     # Cleanup on shutdown
-    try:
-        from app.api.events import stop_background_refresh
-        stop_background_refresh()
-        logger.info("🛑 Background refresh stopped")
-    except Exception:
-        pass
-    
-    try:
-        from app.api.intelligence_dashboard import stop_intelligence_refresh
-        stop_intelligence_refresh()
-        logger.info("🛑 Intelligence background refresh stopped")
-    except Exception:
-        pass
-    
     # Close async database pool
     try:
         from app.database.session import close_async_pool
@@ -429,14 +338,6 @@ async def health_check():
         health_status["checks"]["database"] = f"error: {str(e)[:50]}"
         health_status["status"] = "degraded"
     
-    # Check if cache is warm (optional, don't fail health check)
-    try:
-        from app.api.events_db import _get_merged_cache
-        cache = _get_merged_cache()
-        health_status["checks"]["cache"] = "warm" if cache else "cold"
-    except Exception:
-        health_status["checks"]["cache"] = "unknown"
-    
     # Always return 200 unless critical failure
     # This prevents unnecessary restarts during temporary issues
     return health_status
@@ -445,23 +346,14 @@ async def health_check():
 @app.get("/health/ready")
 async def readiness_check():
     """
-    Readiness probe - returns 200 only when fully ready to serve traffic.
-    Used during deployments to ensure new instances are ready.
+    Readiness probe - returns 200 when DB is reachable.
     """
     try:
         from app.database.session import test_connection
-        from app.api.events_db import _get_merged_cache
-        
-        db_ok = test_connection()
-        cache_ok = _get_merged_cache() is not None
-        
-        if db_ok and cache_ok:
-            return {"ready": True, "database": "ok", "cache": "warm"}
-        elif db_ok:
-            return {"ready": True, "database": "ok", "cache": "warming"}
-        else:
-            from fastapi import Response
-            return Response(status_code=503, content='{"ready": false}')
+        if test_connection():
+            return {"ready": True, "database": "ok"}
+        from fastapi import Response
+        return Response(status_code=503, content='{"ready": false}')
     except Exception as e:
         from fastapi import Response
         return Response(status_code=503, content=f'{{"ready": false, "error": "{str(e)[:50]}"}}')
