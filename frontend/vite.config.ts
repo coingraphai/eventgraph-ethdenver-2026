@@ -16,6 +16,9 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8001',
         changeOrigin: true,
+        // DO App Platform strips the /api prefix before forwarding to backend.
+        // Replicate that same behaviour in local dev so routes match in both envs.
+        rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
   },

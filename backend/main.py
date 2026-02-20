@@ -184,21 +184,21 @@ app.add_middleware(
 # Import and include routers
 try:
     from app.api.chat import router as chat_router
-    app.include_router(chat_router, prefix="/api")
+    app.include_router(chat_router, prefix="")
     logger.info("✅ Chat router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load chat router: {e}")
 
 try:
     from app.api.chat_v2_stream import router as chat_v2_stream_router
-    app.include_router(chat_v2_stream_router, prefix="/api")
+    app.include_router(chat_v2_stream_router, prefix="")
     logger.info("✅ Chat v2 stream router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load chat v2 stream router: {e}")
 
 try:
     from app.api.predictions import router as predictions_router
-    app.include_router(predictions_router, prefix="/api")
+    app.include_router(predictions_router, prefix="")
     logger.info("✅ Predictions router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load predictions router: {e}")
@@ -206,7 +206,7 @@ except ImportError as e:
 # Database-backed dashboard (new)
 try:
     from app.api.dashboard_db import router as dashboard_db_router
-    app.include_router(dashboard_db_router, prefix="/api/dashboard", tags=["dashboard-db"])
+    app.include_router(dashboard_db_router, prefix="/dashboard", tags=["dashboard-db"])
     logger.info("✅ Dashboard (database-backed) router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load dashboard_db router: {e}")
@@ -214,7 +214,7 @@ except ImportError as e:
 # Database-backed markets (new)
 try:
     from app.api.markets_db import router as markets_db_router
-    app.include_router(markets_db_router, prefix="/api/markets", tags=["markets-db"])
+    app.include_router(markets_db_router, prefix="/markets", tags=["markets-db"])
     logger.info("✅ Markets (database-backed) router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load markets_db router: {e}")
@@ -222,7 +222,7 @@ except ImportError as e:
 # Database-backed analytics (new)
 try:
     from app.api.analytics_db import router as analytics_db_router
-    app.include_router(analytics_db_router, prefix="/api/analytics", tags=["analytics-db"])
+    app.include_router(analytics_db_router, prefix="/analytics", tags=["analytics-db"])
     logger.info("✅ Analytics (database-backed) router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load analytics_db router: {e}")
@@ -230,7 +230,7 @@ except ImportError as e:
 # Database-backed events (new)
 try:
     from app.api.events_db import router as events_db_router
-    app.include_router(events_db_router, prefix="/api/db", tags=["events-db"])
+    app.include_router(events_db_router, prefix="/db", tags=["events-db"])
     logger.info("✅ Events (database-backed) router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load events_db router: {e}")
@@ -238,91 +238,91 @@ except ImportError as e:
 # Legacy dashboard (API-based) - keep for fallback
 try:
     from app.api.dashboard import router as dashboard_router
-    app.include_router(dashboard_router, prefix="/api/dashboard-legacy", tags=["dashboard-legacy"])
+    app.include_router(dashboard_router, prefix="/dashboard-legacy", tags=["dashboard-legacy"])
     logger.info("✅ Dashboard (legacy API-based) router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load dashboard router: {e}")
 
 try:
     from app.api.unified_markets import router as unified_markets_router
-    app.include_router(unified_markets_router, prefix="/api/unified", tags=["unified-markets"])
+    app.include_router(unified_markets_router, prefix="/unified", tags=["unified-markets"])
     logger.info("✅ Unified markets router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load unified markets router: {e}")
 
 try:
     from app.api.unified_events import router as unified_events_router
-    app.include_router(unified_events_router, prefix="/api/unified", tags=["unified-events"])
+    app.include_router(unified_events_router, prefix="/unified", tags=["unified-events"])
     logger.info("✅ Unified events router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load unified events router: {e}")
 
 try:
     from app.api.leaderboard import router as leaderboard_router
-    app.include_router(leaderboard_router, prefix="/api", tags=["leaderboard"])
+    app.include_router(leaderboard_router, prefix="", tags=["leaderboard"])
     logger.info("✅ Leaderboard router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load leaderboard router: {e}")
 
 try:
     from app.api.leaderboard_db import router as leaderboard_db_router
-    app.include_router(leaderboard_db_router, prefix="/api", tags=["leaderboard-db"])
+    app.include_router(leaderboard_db_router, prefix="", tags=["leaderboard-db"])
     logger.info("✅ Leaderboard DB router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load leaderboard-db router: {e}")
 
 try:
     from app.api.leaderboard_enriched import router as leaderboard_enriched_router
-    app.include_router(leaderboard_enriched_router, prefix="/api", tags=["leaderboard-enriched"])
+    app.include_router(leaderboard_enriched_router, prefix="", tags=["leaderboard-enriched"])
     logger.info("✅ Leaderboard Enriched router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load leaderboard-enriched router: {e}")
 
 try:
     from app.api.arbitrage import router as arbitrage_router
-    app.include_router(arbitrage_router, prefix="/api/arbitrage", tags=["arbitrage"])
+    app.include_router(arbitrage_router, prefix="/arbitrage", tags=["arbitrage"])
     logger.info("✅ Arbitrage router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load arbitrage router: {e}")
 
 try:
     from app.api.arbitrage_db import router as arbitrage_db_router
-    app.include_router(arbitrage_db_router, prefix="/api/arbitrage", tags=["arbitrage-db"])
+    app.include_router(arbitrage_db_router, prefix="/arbitrage", tags=["arbitrage-db"])
     logger.info("✅ Arbitrage DB router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load arbitrage-db router: {e}")
 
 try:
     from app.api.cross_venue import router as cross_venue_router
-    app.include_router(cross_venue_router, prefix="/api", tags=["cross-venue"])
+    app.include_router(cross_venue_router, prefix="", tags=["cross-venue"])
     logger.info("✅ Cross-venue comparison router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load cross-venue router: {e}")
 
 try:
     from app.api.cross_venue_events import router as cross_venue_events_router
-    app.include_router(cross_venue_events_router, prefix="/api", tags=["cross-venue-events"])
+    app.include_router(cross_venue_events_router, prefix="", tags=["cross-venue-events"])
     logger.info("✅ Cross-venue EVENTS router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load cross-venue-events router: {e}")
 
 try:
     from app.api.cross_venue_db import router as cross_venue_db_router
-    app.include_router(cross_venue_db_router, prefix="/api", tags=["cross-venue-db"])
+    app.include_router(cross_venue_db_router, prefix="", tags=["cross-venue-db"])
     logger.info("✅ Cross-venue DB router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load cross-venue-db router: {e}")
 
 try:
     from app.api.alerts import router as alerts_router
-    app.include_router(alerts_router, prefix="/api/alerts", tags=["alerts"])
+    app.include_router(alerts_router, prefix="/alerts", tags=["alerts"])
     logger.info("✅ Alerts router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load alerts router: {e}")
 
 try:
     from app.api.market_test import router as market_test_router
-    app.include_router(market_test_router, prefix="/api/market-test", tags=["market-test"])
+    app.include_router(market_test_router, prefix="/market-test", tags=["market-test"])
     logger.info("✅ Market test router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load market test router: {e}")
@@ -330,14 +330,14 @@ except ImportError as e:
 # Legacy events (API-based) - moved to /events-legacy
 try:
     from app.api.events import router as events_router
-    app.include_router(events_router, prefix="/api/events-legacy", tags=["events-legacy"])
+    app.include_router(events_router, prefix="/events-legacy", tags=["events-legacy"])
     logger.info("✅ Events (legacy API-based) router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load events router: {e}")
 
 try:
     from app.api.event_analytics import router as event_analytics_router
-    app.include_router(event_analytics_router, prefix="/api", tags=["event-analytics"])
+    app.include_router(event_analytics_router, prefix="", tags=["event-analytics"])
     logger.info("✅ Event analytics router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load event analytics router: {e}")
@@ -345,7 +345,7 @@ except ImportError as e:
 # Admin endpoints for batch operations
 try:
     from app.api.admin import router as admin_router
-    app.include_router(admin_router, prefix="/api", tags=["admin"])
+    app.include_router(admin_router, prefix="", tags=["admin"])
     logger.info("✅ Admin router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load admin router: {e}")
@@ -377,7 +377,7 @@ except ImportError as e:
 # Intelligence Dashboard (Direct API aggregation for YC demo)
 try:
     from app.api.intelligence_dashboard import router as intelligence_dashboard_router
-    app.include_router(intelligence_dashboard_router, prefix="/api/intelligence", tags=["intelligence"])
+    app.include_router(intelligence_dashboard_router, prefix="/intelligence", tags=["intelligence"])
     logger.info("✅ Intelligence Dashboard router loaded (Direct API aggregation)")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load intelligence dashboard router: {e}")
@@ -385,7 +385,7 @@ except ImportError as e:
 # Data freshness status (used by header badge on every page)
 try:
     from app.api.data_status import router as data_status_router
-    app.include_router(data_status_router, prefix="/api", tags=["system"])
+    app.include_router(data_status_router, prefix="", tags=["system"])
     logger.info("✅ Data status router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load data status router: {e}")
