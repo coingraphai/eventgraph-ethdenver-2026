@@ -54,14 +54,20 @@ class Settings(BaseSettings):
     # Optional: OpenAI (fallback)
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     
-    # CORS
-    CORS_ORIGINS: list = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost",
-        "*"
-    ]
-    
+    # CORS — comma-separated list via env var.
+    # In production on DO App Platform, /api/* is routed internally so CORS
+    # is never needed from the browser. This only applies to direct API access.
+    # Example: CORS_ORIGINS=https://myapp.com,http://localhost:5173
+    CORS_ORIGINS_STR: str = os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://localhost:5173,http://localhost:8080"
+    )
+
+    @property
+    def CORS_ORIGINS(self) -> list:
+        origins = [o.strip() for o in self.CORS_ORIGINS_STR.split(",") if o.strip()]
+        return origins
+
     class Config:
         env_file = ".env"
         extra = "ignore"  # Ignore extra fields from .env

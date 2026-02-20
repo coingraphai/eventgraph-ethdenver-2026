@@ -16,6 +16,22 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Stop Data Pipeline Scheduler
+if [ -f "logs/pipeline.pid" ]; then
+    PIPELINE_PID=$(cat logs/pipeline.pid)
+    if ps -p $PIPELINE_PID > /dev/null 2>&1; then
+        echo -e "${YELLOW}Stopping Pipeline Scheduler (PID: $PIPELINE_PID)...${NC}"
+        kill $PIPELINE_PID 2>/dev/null || true
+        sleep 1
+        kill -9 $PIPELINE_PID 2>/dev/null || true
+        echo -e "${GREEN}✓ Pipeline stopped${NC}"
+    else
+        echo -e "${YELLOW}Pipeline not running${NC}"
+    fi
+    rm -f logs/pipeline.pid
+fi
+pkill -f "predictions_ingest.cli schedule" 2>/dev/null || true
+
 # Stop Backend
 if [ -f "logs/backend.pid" ]; then
     BACKEND_PID=$(cat logs/backend.pid)

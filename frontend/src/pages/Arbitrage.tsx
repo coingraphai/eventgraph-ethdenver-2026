@@ -212,7 +212,7 @@ export const Arbitrage: React.FC = () => {
   const [loadingStep, setLoadingStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [minSpread, setMinSpread] = useState(1); // Minimum spread percentage - lowered to 1%
-  const [minMatchScore, setMinMatchScore] = useState(0.50); // Minimum match confidence - 50%
+  const [minMatchScore, setMinMatchScore] = useState(0.20); // Minimum match confidence - 20%
   const [sortBy, setSortBy] = useState<'spread' | 'profit' | 'volume'>('spread');
   const [rawStats, setRawStats] = useState({
     totalOpportunities: 0,
@@ -305,22 +305,17 @@ export const Arbitrage: React.FC = () => {
     }
   };
 
-  // Fetch opportunities from API with wide filters — filtering/sorting is done client-side
+  // Fetch opportunities from DB — filtering/sorting is done client-side
   const findArbitrageOpportunities = useCallback(async () => {
     setLoading(true);
     setLoadingStep(0);
     setError(null);
     
-    // Cycle through loading steps to show progress
-    const stepInterval = setInterval(() => {
-      setLoadingStep(prev => Math.min(prev + 1, 4));
-    }, 3000);
-    
     try {
-      // Fetch with wide params — client-side filtering will narrow down
+      // DB endpoint: instant response, no live API calls
       const API_BASE = import.meta.env.VITE_API_URL || '';
       const response = await fetch(
-        `${API_BASE}/api/arbitrage/opportunities?min_spread=0.5&min_match_score=0.30&limit=200`
+        `${API_BASE}/api/arbitrage/opportunities-db?min_spread=0.5&min_match_score=0.20&limit=200`
       );
       
       if (!response.ok) {
@@ -395,13 +390,12 @@ export const Arbitrage: React.FC = () => {
         platformPairs: data.stats.platform_pairs,
       });
       
-      console.log(`✅ Fetched ${transformedOpps.length} arbitrage opportunities (filtered/sorted client-side)`);
+      console.log(`✅ Fetched ${transformedOpps.length} arbitrage opportunities from DB (filtered/sorted client-side)`);
       
     } catch (err: any) {
       console.error('Error finding arbitrage:', err);
-      setError(err?.message || 'Failed to scan for arbitrage opportunities. Check console for details.');
+      setError(err?.message || 'Failed to load arbitrage opportunities from database.');
     } finally {
-      clearInterval(stepInterval);
       setLoading(false);
     }
   }, []);
@@ -443,9 +437,17 @@ export const Arbitrage: React.FC = () => {
               <CompareArrows sx={{ color: 'primary.main', fontSize: 32 }} />
               Arbitrage Scanner
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Cross-venue price differences across 4 prediction markets • Real-time opportunities
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                Polymarket vs Kalshi price differences • Database-powered
+              </Typography>
+              <Chip
+                icon={<Speed sx={{ fontSize: 12 }} />}
+                label="DB-powered"
+                size="small"
+                sx={{ height: 18, fontSize: '0.65rem', color: TRADING_COLORS.YES, backgroundColor: alpha(TRADING_COLORS.YES, 0.1) }}
+              />
+            </Box>
           </Box>
           <Button
             variant="outlined"
@@ -614,86 +616,24 @@ export const Arbitrage: React.FC = () => {
         </Stack>
       </Paper>
 
-      {/* Loading State — Interactive Scanning Experience */}
+      {/* Loading State */}
       {loading && (
         <Paper
           elevation={0}
           sx={{
-            p: 3,
+            p: 2.5,
             mb: 3,
             borderRadius: 2,
             border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}`,
-            background: `linear-gradient(135deg, ${alpha(theme.palette.primary.main, 0.03)} 0%, ${alpha(theme.palette.background.paper, 0.8)} 100%)`,
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
             <CompareArrows sx={{ color: 'primary.main', fontSize: 20, animation: `${pulse} 1.5s ease-in-out infinite` }} />
             <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-              Scanning Markets...
+              Scanning DB for cross-venue price differences…
             </Typography>
           </Box>
-          
-          {/* Step indicators */}
-          <Stack spacing={1.2} sx={{ mb: 2 }}>
-            {[
-              'Fetching markets from Polymarket & Kalshi',
-              'Matching similar events across platforms',
-              'Calculating price spreads & profit potential',
-              'Scoring execution feasibility',
-              'Ranking opportunities',
-            ].map((step, i) => (
-              <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                {loadingStep > i ? (
-                  <CheckCircle sx={{ fontSize: 16, color: TRADING_COLORS.YES }} />
-                ) : loadingStep === i ? (
-                  <Box
-                    sx={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: '50%',
-                      border: `2px solid ${theme.palette.primary.main}`,
-                      borderTopColor: 'transparent',
-                      animation: 'spin 0.8s linear infinite',
-                      '@keyframes spin': {
-                        '0%': { transform: 'rotate(0deg)' },
-                        '100%': { transform: 'rotate(360deg)' },
-                      },
-                    }}
-                  />
-                ) : (
-                  <Box
-                    sx={{
-                      width: 16,
-                      height: 16,
-                      borderRadius: '50%',
-                      border: `2px solid ${alpha(theme.palette.text.disabled, 0.3)}`,
-                    }}
-                  />
-                )}
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color: loadingStep >= i ? 'text.primary' : 'text.disabled',
-                    fontWeight: loadingStep === i ? 600 : 400,
-                    transition: 'all 0.3s ease',
-                  }}
-                >
-                  {step}
-                </Typography>
-              </Box>
-            ))}
-          </Stack>
-          
-          <LinearProgress
-            sx={{
-              borderRadius: 1,
-              height: 3,
-              backgroundColor: alpha(theme.palette.primary.main, 0.08),
-              '& .MuiLinearProgress-bar': {
-                borderRadius: 1,
-              },
-            }}
-          />
+          <LinearProgress sx={{ borderRadius: 1, height: 3, backgroundColor: alpha(theme.palette.primary.main, 0.08), '& .MuiLinearProgress-bar': { borderRadius: 1 } }} />
         </Paper>
       )}
 

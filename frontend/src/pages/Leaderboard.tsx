@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Card,
@@ -12,7 +12,7 @@ import {
   TableRow,
   Chip,
   Button,
-  CircularProgress,
+  LinearProgress,
   ToggleButtonGroup,
   ToggleButton,
   FormControl,
@@ -23,673 +23,609 @@ import {
   Tooltip,
   IconButton,
   Link as MuiLink,
-  Alert,
   Paper,
   Grid,
+  TextField,
+  InputAdornment,
+  alpha,
+  useTheme,
 } from '@mui/material';
 import {
-  TrendingUp,
   OpenInNew,
   Refresh,
   EmojiEvents,
-  ShowChart,
-  AttachMoney,
+  Search,
+  FilterList,
+  Speed,
 } from '@mui/icons-material';
+import { keyframes } from '@mui/system';
+import { PLATFORM_COLORS, TRADING_COLORS, CHART_COLORS } from '../utils/colors';
 
-interface Trader {
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+const fadeInUp = keyframes`
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
+const pulse = keyframes`
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+`;
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+interface TraderRow {
   rank: number;
   wallet_address: string;
+  display_name: string;
   platform: string;
   profile_url: string;
-  pnl: number;
-  pnl_24h: number;
-  pnl_7d: number;
-  pnl_30d: number;
-  volume: number;
-  trades: number;
-  win_rate: number;
-  roi: number;
-  avg_position_size: number;
-  last_trade: string;
-  updated_at: string;
-  // Phase 1 enhanced fields
-  is_whale?: boolean;
-  is_active_7d?: boolean;
-  strategy_type?: string;
-  top_market_1?: string;
-  avg_hold_duration_hours?: number;
-}
-
-interface LeaderboardStats {
-  total_traders: number;
-  total_pnl: number;
+  trade_count: number;
   total_volume: number;
-  total_trades: number;
-  avg_win_rate: number;
-  platform_breakdown: Record<string, number>;
+  buy_volume: number;
+  sell_volume: number;
+  avg_trade_size: number;
+  markets_traded: number;
+  vol_24h: number;
+  vol_7d: number;
+  vol_30d: number;
+  trades_24h: number;
+  trades_7d: number;
+  trades_30d: number;
+  is_whale: boolean;
+  is_active_24h: boolean;
+  is_active_7d: boolean;
+  last_trade: string | null;
+  // Dome API enrichment
+  handle: string | null;
+  total_winnings: number;
+  biggest_win: number;
+  markets_won: number;
+  dome_enriched: boolean;
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function fmtVol(v: number): string {
+  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000)     return `$${(v / 1_000).toFixed(0)}K`;
+  return `$${v.toFixed(0)}`;
+}
+
+function fmtPnl(v: number): string {
+  const sign = v >= 0 ? '+' : '';
+  if (Math.abs(v) >= 1_000_000) return `${sign}$${(v / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(v) >= 1_000)     return `${sign}$${(v / 1_000).toFixed(0)}K`;
+  return `${sign}$${v.toFixed(0)}`;
+}
+
+function fmtWallet(w: string): string {
+  if (w.startsWith('0x') && w.length >= 10) return `${w.slice(0, 6)}…${w.slice(-4)}`;
+  if (w.length > 16) return `${w.slice(0, 8)}…${w.slice(-4)}`;
+  return w;
+}
+
+function fmtDate(s: string | null): string {
+  if (!s) return '–';
+  return new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function medalEmoji(rank: number): string {
+  if (rank === 1) return '🥇';
+  if (rank === 2) return '🥈';
+  if (rank === 3) return '🥉';
+  return '';
+}
+
+const PLATFORM_LABEL: Record<string, string> = {
+  polymarket: 'Polymarket',
+  kalshi: 'Kalshi',
+  limitless: 'Limitless',
+};
+
+const PLATFORM_COLOR_MAP: Record<string, { primary: string; bg: string }> = {
+  polymarket: PLATFORM_COLORS.polymarket,
+  kalshi: PLATFORM_COLORS.kalshi,
+  limitless: PLATFORM_COLORS.limitless,
+};
+
+// ── Main component ─────────────────────────────────────────────────────────────
 export const Leaderboard: React.FC = () => {
-  const [traders, setTraders] = useState<Trader[]>([]);
-  const [stats, setStats] = useState<LeaderboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [statsLoading, setStatsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  
-  // Filters
-  const [timeWindow, setTimeWindow] = useState<string>('all_time');
-  const [platform, setPlatform] = useState<string>('all');
-  const [limit, setLimit] = useState<number>(100);
-  const [showWhalesOnly, setShowWhalesOnly] = useState<boolean>(false);
-  const [showActiveOnly, setShowActiveOnly] = useState<boolean>(false);
-  const [strategyFilter, setStrategyFilter] = useState<string>('all');
+  const theme = useTheme();
 
-  useEffect(() => {
-    fetchLeaderboard();
-    fetchStats();
-  }, [timeWindow, platform]);
+  const [traders, setTraders]         = useState<TraderRow[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState<string | null>(null);
+  const [queryMs, setQueryMs]         = useState<number | null>(null);
+  const [totalUnique, setTotalUnique] = useState(0);
+  const [enrichedCount, setEnrichedCount] = useState(0);
 
-  const fetchLeaderboard = async () => {
+  // filters / sorting
+  const [search, setSearch]           = useState('');
+  const [platform, setPlatform]       = useState('all');
+  const [timeWindow, setTimeWindow]   = useState<'all' | '24h' | '7d' | '30d'>('all');
+  const [sortBy, setSortBy]           = useState<'volume' | 'trades' | 'winnings' | 'biggest_win' | 'markets_won'>('volume');
+  const [whalesOnly, setWhalesOnly]   = useState(false);
+  const [activeOnly, setActiveOnly]   = useState(false);
+
+  const fetchTraders = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
     try {
-      const params = new URLSearchParams({
-        limit: limit.toString(),
-        time_window: timeWindow,
-      });
-      
-      if (platform !== 'all') {
-        params.append('platform', platform);
-      }
-      
-      const response = await fetch(`/api/leaderboard?${params}`);
-      const data = await response.json();
-      
-      if (data.success) {
-        setTraders(data.traders);
-      } else {
-        setError(data.error || 'Failed to load leaderboard');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch leaderboard');
+      const res = await fetch(`${API_BASE}/api/leaderboard-enriched`);
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Unknown error');
+      setTraders(data.traders ?? []);
+      setQueryMs(data.query_ms ?? null);
+      setTotalUnique(data.total_unique_traders ?? 0);
+      setEnrichedCount(data.enriched_count ?? 0);
+    } catch (e: any) {
+      setError(e.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchStats = async () => {
-    setStatsLoading(true);
-    
-    try {
-      const response = await fetch('/api/leaderboard/stats');
-      const data = await response.json();
-      
-      if (data.success) {
-        setStats(data.stats);
+  useEffect(() => { fetchTraders(); }, [fetchTraders]);
+
+  // ── Client-side filter + sort ──────────────────────────────────────────────
+  const displayed = useMemo(() => {
+    let out = traders.filter(t => {
+      if (whalesOnly && !t.is_whale) return false;
+      if (activeOnly && !t.is_active_7d) return false;
+      if (search) {
+        const q = search.toLowerCase();
+        const match = t.wallet_address.toLowerCase().includes(q)
+          || (t.handle ?? '').toLowerCase().includes(q)
+          || (t.display_name ?? '').toLowerCase().includes(q);
+        if (!match) return false;
       }
-    } catch (err) {
-      console.error('Failed to fetch stats:', err);
-    } finally {
-      setStatsLoading(false);
-    }
-  };
+      return true;
+    });
 
-  const handleRefresh = () => {
-    fetchLeaderboard();
-    fetchStats();
-  };
+    out.sort((a, b) => {
+      const vol = (t: TraderRow) =>
+        timeWindow === '24h' ? t.vol_24h
+        : timeWindow === '7d' ? t.vol_7d
+        : timeWindow === '30d' ? t.vol_30d
+        : t.total_volume;
 
-  const formatPnL = (pnl: number) => {
-    const color = pnl >= 0 ? 'success' : 'error';
-    const sign = pnl >= 0 ? '+' : '';
-    return (
-      <Chip
-        label={`${sign}$${pnl.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-        color={color}
-        size="small"
-        sx={{ fontWeight: 'bold', minWidth: 100 }}
-      />
-    );
-  };
+      if (sortBy === 'volume')      return vol(b) - vol(a);
+      if (sortBy === 'winnings')     return b.total_winnings - a.total_winnings;
+      if (sortBy === 'biggest_win')  return b.biggest_win - a.biggest_win;
+      if (sortBy === 'markets_won')  return b.markets_won - a.markets_won;
+      if (sortBy === 'trades')       return (timeWindow === '24h' ? b.trades_24h - a.trades_24h : b.trade_count - a.trade_count);
+      return 0;
+    });
 
-  const formatWallet = (wallet: string) => {
-    if (wallet.length > 15) {
-      return `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
-    }
-    return wallet;
-  };
+    return out;
+  }, [traders, search, whalesOnly, activeOnly, sortBy, timeWindow]);
 
-  const getPlatformColor = (platform: string) => {
-    switch (platform) {
-      case 'polymarket':
-        return 'primary';
-      case 'kalshi':
-        return 'secondary';
-      case 'limitless':
-        return 'info';
-      default:
-        return 'default';
-    }
-  };
+  // ── Aggregate stats ────────────────────────────────────────────────────────
+  const aggStats = useMemo(() => {
+    const t = displayed;
+    if (!t.length) return null;
+    return {
+        totalVolume:   t.reduce((s, x) => s + x.total_volume, 0),
+        totalWinnings: t.reduce((s, x) => s + x.total_winnings, 0),
+        totalTrades:   t.reduce((s, x) => s + x.trade_count, 0),
+        whaleCount:    t.filter(x => x.is_whale).length,
+        active24h:     t.filter(x => x.is_active_24h).length,
+        winnersCount:  t.filter(x => x.total_winnings > 0).length,
+    };
+  }, [displayed]);
 
-  const getPlatformIcon = (platform: string) => {
-    // Could add custom platform icons here
-    return <EmojiEvents fontSize="small" />;
-  };
+  // ── Volume getter based on time window ────────────────────────────────────
+  const getVol = (t: TraderRow) =>
+    timeWindow === '24h' ? t.vol_24h
+    : timeWindow === '7d' ? t.vol_7d
+    : timeWindow === '30d' ? t.vol_30d
+    : t.total_volume;
 
-  const getTimeWindowLabel = (window: string) => {
-    switch (window) {
-      case '24h':
-        return '24 Hours';
-      case '7d':
-        return '7 Days';
-      case '30d':
-        return '30 Days';
-      case 'all_time':
-        return 'All Time';
-      default:
-        return window;
-    }
-  };
-
-  const getPnLByTimeWindow = (trader: Trader) => {
-    switch (timeWindow) {
-      case '24h':
-        return trader.pnl_24h;
-      case '7d':
-        return trader.pnl_7d;
-      case '30d':
-        return trader.pnl_30d;
-      case 'all_time':
-      default:
-        return trader.pnl;
-    }
-  };
-
-  // Phase 1: Strategy type colors
-  const getStrategyColor = (strategy?: string) => {
-    switch (strategy) {
-      case 'scalper':
-        return 'info';
-      case 'swing_trader':
-        return 'success';
-      case 'long_term':
-        return 'secondary';
-      case 'arbitrageur':
-        return 'warning';
-      case 'mixed':
-        return 'default';
-      default:
-        return 'default';
-    }
-  };
-
-  const getStrategyLabel = (strategy?: string) => {
-    switch (strategy) {
-      case 'scalper':
-        return 'Scalper';
-      case 'swing_trader':
-        return 'Swing';
-      case 'long_term':
-        return 'Long-term';
-      case 'arbitrageur':
-        return 'Arbitrage';
-      case 'mixed':
-        return 'Mixed';
-      default:
-        return 'Unknown';
-    }
-  };
-
-  // Phase 1: Filter traders client-side
-  const filteredTraders = traders.filter(trader => {
-    if (showWhalesOnly && !trader.is_whale) return false;
-    if (showActiveOnly && !trader.is_active_7d) return false;
-    if (strategyFilter !== 'all' && trader.strategy_type !== strategyFilter) return false;
-    return true;
-  });
+  const getTrades = (t: TraderRow) =>
+    timeWindow === '24h' ? t.trades_24h
+    : timeWindow === '7d' ? t.trades_7d
+    : timeWindow === '30d' ? t.trades_30d
+    : t.trade_count;
 
   return (
-    <Box sx={{ p: 3 }}>
-      {/* Header */}
+    <Box sx={{ p: 3, minHeight: '100vh', backgroundColor: 'background.default' }}>
+
+      {/* ── Header ── */}
       <Box sx={{ mb: 3 }}>
-        <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 2 }}>
-          <EmojiEvents sx={{ fontSize: 40, color: 'warning.main' }} />
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
           <Box>
-            <Typography variant="h4" fontWeight="bold">
+            <Typography variant="h4" sx={{ fontWeight: 700, mb: 0.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <EmojiEvents sx={{ color: '#F59E0B', fontSize: 32 }} />
               Trader Leaderboard
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Top performing traders across prediction markets
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography variant="body2" color="text.secondary">
+                Top 100 traders • DB volume + Dome API winnings • {totalUnique} unique traders
+              </Typography>
+              {queryMs !== null && (
+                <Chip
+                  icon={<Speed sx={{ fontSize: 12 }} />}
+                  label={queryMs > 5000 ? `${(queryMs/1000).toFixed(1)}s • fetching Dome API…` : `${queryMs}ms cached`}
+                  size="small"
+                  sx={{ height: 18, fontSize: '0.65rem', color: TRADING_COLORS.YES, backgroundColor: alpha(TRADING_COLORS.YES, 0.1) }}
+                />
+              )}
+            </Box>
           </Box>
-        </Stack>
-
-        {/* Stats Cards */}
-        {!statsLoading && stats && (
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center' }}>
-                <Typography variant="h6" color="primary" fontWeight="bold">
-                  {stats.total_traders}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Total Traders
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center' }}>
-                <Typography variant="h6" color="success.main" fontWeight="bold">
-                  ${stats.total_pnl.toLocaleString()}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Combined PnL
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center' }}>
-                <Typography variant="h6" color="info.main" fontWeight="bold">
-                  ${stats.total_volume.toLocaleString()}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Total Volume
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper sx={{ p: 2, textAlign: 'center' }}>
-                <Typography variant="h6" color="warning.main" fontWeight="bold">
-                  {(stats.avg_win_rate * 100).toFixed(1)}%
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Avg Win Rate
-                </Typography>
-              </Paper>
-            </Grid>
-          </Grid>
-        )}
+          <Button
+            variant="outlined"
+            startIcon={<Refresh sx={{ animation: loading ? `${pulse} 1s infinite` : 'none' }} />}
+            onClick={fetchTraders}
+            disabled={loading}
+            size="large"
+          >
+            Refresh
+          </Button>
+        </Box>
       </Box>
 
-      {/* Filters */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Stack spacing={2}>
-            {/* Row 1: Time, Platform, Limit */}
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
-              {/* Time Window Filter */}
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                  Time Period
+      {/* ── Stats cards ── */}
+      {aggStats && (
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {[
+            { label: 'Traders Shown',    value: displayed.length,                        sub: `of ${totalUnique} in DB`,                                       color: theme.palette.primary.main },
+            { label: 'Total Winnings',   value: fmtVol(aggStats.totalWinnings),           sub: `${aggStats.winnersCount} traders with REDEEM events (Dome API)`,  color: TRADING_COLORS.YES         },
+            { label: 'Total Trades',     value: aggStats.totalTrades.toLocaleString(),    sub: `from predictions_silver.trades`,                                color: CHART_COLORS.amber          },
+            { label: 'Active (24 h)',    value: aggStats.active24h,                       sub: `🐋 ${aggStats.whaleCount} whales • ${enrichedCount} Dome-enriched`, color: theme.palette.info.main  },
+          ].map(({ label, value, sub, color }) => (
+            <Grid item xs={12} sm={6} md={3} key={label}>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2.5,
+                  borderRadius: 2,
+                  background: `linear-gradient(135deg, ${alpha(color, 0.1)} 0%, ${alpha(color, 0.04)} 100%)`,
+                  border: `1px solid ${alpha(color, 0.2)}`,
+                }}
+              >
+                <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 600 }}>
+                  {label}
                 </Typography>
-                <ToggleButtonGroup
-                  value={timeWindow}
-                  exclusive
-                  onChange={(_, value) => value && setTimeWindow(value)}
-                  size="small"
-                  fullWidth
-                >
-                  <ToggleButton value="24h">24h</ToggleButton>
-                  <ToggleButton value="7d">7d</ToggleButton>
-                  <ToggleButton value="30d">30d</ToggleButton>
-                  <ToggleButton value="all_time">All Time</ToggleButton>
-                </ToggleButtonGroup>
-              </Box>
-
-              {/* Platform Filter */}
-              <FormControl sx={{ minWidth: 200 }}>
-                <InputLabel>Platform</InputLabel>
-                <Select
-                  value={platform}
-                  label="Platform"
-                  onChange={(e) => setPlatform(e.target.value)}
-                  size="small"
-                >
-                  <MenuItem value="all">All Platforms</MenuItem>
-                  <MenuItem value="polymarket">Polymarket</MenuItem>
-                  <MenuItem value="kalshi">Kalshi</MenuItem>
-                </Select>
-              </FormControl>
-
-              {/* Limit Selector */}
-              <FormControl sx={{ minWidth: 150 }}>
-                <InputLabel>Show Top</InputLabel>
-                <Select
-                  value={limit}
-                  label="Show Top"
-                  onChange={(e) => setLimit(Number(e.target.value))}
-                  size="small"
-                >
-                  <MenuItem value={50}>Top 50</MenuItem>
-                  <MenuItem value={100}>Top 100</MenuItem>
-                  <MenuItem value={250}>Top 250</MenuItem>
-                  <MenuItem value={500}>Top 500</MenuItem>
-                  <MenuItem value={1000}>Top 1,000</MenuItem>
-                  <MenuItem value={2000}>Top 2,000</MenuItem>
-                </Select>
-              </FormControl>
-
-              {/* Refresh Button */}
-              <Tooltip title="Refresh data">
-                <IconButton onClick={handleRefresh} color="primary" disabled={loading}>
-                  <Refresh />
-                </IconButton>
-              </Tooltip>
-            </Stack>
-
-            {/* Row 2: Phase 1 Enhanced Filters */}
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center">
-              {/* Strategy Filter */}
-              <FormControl sx={{ minWidth: 200 }}>
-                <InputLabel>Strategy Type</InputLabel>
-                <Select
-                  value={strategyFilter}
-                  label="Strategy Type"
-                  onChange={(e) => setStrategyFilter(e.target.value)}
-                  size="small"
-                >
-                  <MenuItem value="all">All Strategies</MenuItem>
-                  <MenuItem value="scalper">Scalper</MenuItem>
-                  <MenuItem value="swing_trader">Swing Trader</MenuItem>
-                  <MenuItem value="long_term">Long-term</MenuItem>
-                  <MenuItem value="arbitrageur">Arbitrage</MenuItem>
-                  <MenuItem value="mixed">Mixed</MenuItem>
-                </Select>
-              </FormControl>
-
-              {/* Whales Only Toggle */}
-              <ToggleButtonGroup
-                value={showWhalesOnly ? 'whales' : 'all'}
-                exclusive
-                onChange={(_, value) => setShowWhalesOnly(value === 'whales')}
-                size="small"
-              >
-                <ToggleButton value="all">All Traders</ToggleButton>
-                <ToggleButton value="whales">🐋 Whales Only</ToggleButton>
-              </ToggleButtonGroup>
-
-              {/* Active Only Toggle */}
-              <ToggleButtonGroup
-                value={showActiveOnly ? 'active' : 'all'}
-                exclusive
-                onChange={(_, value) => setShowActiveOnly(value === 'active')}
-                size="small"
-              >
-                <ToggleButton value="all">All Status</ToggleButton>
-                <ToggleButton value="active">🟢 Active Only</ToggleButton>
-              </ToggleButtonGroup>
-
-              {/* Results Counter */}
-              <Typography variant="body2" color="text.secondary" sx={{ ml: 'auto' }}>
-                Showing {filteredTraders.length} of {traders.length} traders
-              </Typography>
-            </Stack>
-          </Stack>
-        </CardContent>
-      </Card>
-
-      {/* Info Alert */}
-      <Alert severity="success" sx={{ mb: 3 }}>
-        <Typography variant="body2" fontWeight="bold">
-          ✅ LIVE DATA: Real trader stats from actual Polymarket trades via Dome API
-        </Typography>
-        <Typography variant="body2" sx={{ mt: 0.5 }}>
-          📊 <strong>Ranked by PnL (Profit/Loss)</strong> - Top performers by profitability
-        </Typography>
-        <Typography variant="body2" sx={{ mt: 0.5 }}>
-          👥 Showing most active traders from last 90 days, sorted by total profit
-        </Typography>
-      </Alert>
-
-      {/* Error State */}
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
-        </Alert>
+                <Typography variant="h3" sx={{ fontWeight: 700, color, my: 0.5 }}>
+                  {value}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">{sub}</Typography>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
       )}
 
-      {/* Loading State */}
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-          <CircularProgress />
-        </Box>
-      ) : (
-        /* Leaderboard Table */
-        <Card>
+      {/* ── Filters ── */}
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2,
+          mb: 3,
+          borderRadius: 2,
+          backgroundColor: alpha(theme.palette.background.paper, 0.6),
+          backdropFilter: 'blur(10px)',
+          border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+        }}
+      >
+        <Stack spacing={2}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
+            <FilterList sx={{ color: 'text.secondary' }} />
+
+            <TextField
+              size="small"
+              placeholder="Search by wallet…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: <InputAdornment position="start"><Search sx={{ fontSize: 16, color: 'text.disabled' }} /></InputAdornment>,
+              }}
+              sx={{ minWidth: 200 }}
+            />
+
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel>Platform</InputLabel>
+              <Select value={platform} label="Platform" onChange={e => setPlatform(e.target.value)}>
+                <MenuItem value="all">All Platforms</MenuItem>
+                <MenuItem value="polymarket">Polymarket</MenuItem>
+                <MenuItem value="kalshi">Kalshi</MenuItem>
+                <MenuItem value="limitless">Limitless</MenuItem>
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel>Sort By</InputLabel>
+              <Select value={sortBy} label="Sort By" onChange={e => setSortBy(e.target.value as any)}>
+                <MenuItem value="volume">Volume (DB)</MenuItem>
+                <MenuItem value="winnings">Winnings (Dome)</MenuItem>
+                <MenuItem value="biggest_win">Biggest Win</MenuItem>
+                <MenuItem value="markets_won">Markets Won</MenuItem>
+                <MenuItem value="trades">Trade Count</MenuItem>
+              </Select>
+            </FormControl>
+
+            <Box sx={{ flex: 1 }} />
+
+            <ToggleButtonGroup
+              value={whalesOnly ? 'whales' : 'all'}
+              exclusive
+              onChange={(_, v) => setWhalesOnly(v === 'whales')}
+              size="small"
+            >
+              <ToggleButton value="all">All</ToggleButton>
+              <ToggleButton value="whales">🐋 Whales</ToggleButton>
+            </ToggleButtonGroup>
+
+            <ToggleButtonGroup
+              value={activeOnly ? 'active' : 'all'}
+              exclusive
+              onChange={(_, v) => setActiveOnly(v === 'active')}
+              size="small"
+            >
+              <ToggleButton value="all">All</ToggleButton>
+              <ToggleButton value="active">🟢 Active</ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
+
+          {/* Time window */}
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 55 }}>
+              Time period:
+            </Typography>
+            <ToggleButtonGroup
+              value={timeWindow}
+              exclusive
+              onChange={(_, v) => v && setTimeWindow(v)}
+              size="small"
+            >
+              <ToggleButton value="24h">24 h</ToggleButton>
+              <ToggleButton value="7d">7 d</ToggleButton>
+              <ToggleButton value="30d">30 d</ToggleButton>
+              <ToggleButton value="all">All time</ToggleButton>
+            </ToggleButtonGroup>
+            <Chip label={`${displayed.length} traders`} color="primary" variant="outlined" size="small" />
+          </Stack>
+        </Stack>
+      </Paper>
+
+      {/* ── Loading ── */}
+      {loading && (
+        <Paper elevation={0} sx={{ p: 2.5, mb: 3, borderRadius: 2, border: `1px solid ${alpha(theme.palette.primary.main, 0.15)}` }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
+            <EmojiEvents sx={{ color: '#F59E0B', fontSize: 20, animation: `${pulse} 1.5s ease-in-out infinite` }} />
+            <Typography variant="subtitle2" fontWeight={600}>Loading top 100 traders + enriching with Dome API… (first load ~15s, then cached 10 min)</Typography>
+          </Box>
+          <LinearProgress sx={{ borderRadius: 1, height: 3 }} />
+        </Paper>
+      )}
+
+      {/* ── Error ── */}
+      {error && (
+        <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2, border: `1px solid ${alpha(TRADING_COLORS.NO, 0.3)}` }}>
+          <Typography color="error" fontWeight={600}>{error}</Typography>
+          <Button onClick={fetchTraders} sx={{ mt: 1 }}>Retry</Button>
+        </Paper>
+      )}
+
+      {/* ── Table ── */}
+      {!loading && !error && (
+        <Card elevation={0} sx={{ borderRadius: 2, border: `1px solid ${alpha(theme.palette.divider, 0.1)}` }}>
           <TableContainer>
-            <Table>
+            <Table size="small">
               <TableHead>
-                <TableRow sx={{ backgroundColor: 'background.paper' }}>
-                  <TableCell align="center" sx={{ fontWeight: 'bold' }}>
-                    Rank
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: 'bold' }}>Trader</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold' }}>Strategy</TableCell>
-                  <TableCell sx={{ fontWeight: 'bold' }}>Platform</TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                    PnL ({getTimeWindowLabel(timeWindow)})
-                  </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                    Volume
-                  </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                    Trades
-                  </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                    Win Rate
-                  </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 'bold' }}>
-                    ROI
-                  </TableCell>
-                  <TableCell align="center" sx={{ fontWeight: 'bold' }}>
-                    Action
-                  </TableCell>
+                <TableRow sx={{ backgroundColor: alpha(theme.palette.background.default, 0.6) }}>
+                  {['Rank', 'Trader', 'Platform', 'Volume', 'Trades', 'Winnings', 'Biggest Win', 'Mkts Won', 'Avg Size', 'Last Trade', ''].map(h => (
+                    <TableCell key={h} align={h === 'Rank' || h === '' ? 'center' : 'right'}
+                      sx={{ fontWeight: 700, fontSize: '0.72rem', whiteSpace: 'nowrap',
+                        ...(h === 'Trader' ? { textAlign: 'left' } : {}) }}>
+                      {h}
+                    </TableCell>
+                  ))}
                 </TableRow>
               </TableHead>
               <TableBody>
-                {filteredTraders.length === 0 ? (
+                {displayed.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
-                      <Typography color="text.secondary">
-                        No traders found for the selected filters
-                      </Typography>
+                    <TableCell colSpan={12} align="center" sx={{ py: 6 }}>
+                      <EmojiEvents sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
+                      <Typography color="text.secondary">No traders found</Typography>
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredTraders.map((trader) => (
-                    <TableRow
-                      key={`${trader.platform}-${trader.wallet_address}`}
-                      hover
-                      sx={{
-                        '&:nth-of-type(odd)': {
-                          backgroundColor: 'action.hover',
-                        },
-                      }}
-                    >
-                      {/* Rank */}
-                      <TableCell align="center">
-                        <Chip
-                          label={`#${trader.rank}`}
-                          size="small"
-                          color={trader.rank <= 3 ? 'warning' : 'default'}
-                          sx={{
-                            fontWeight: trader.rank <= 3 ? 'bold' : 'normal',
-                            minWidth: 50,
-                          }}
-                        />
-                      </TableCell>
+                  displayed.map((trader, idx) => {
+                    const platColor = PLATFORM_COLOR_MAP[trader.platform] ?? PLATFORM_COLOR_MAP.polymarket;
 
-                      {/* Trader Wallet with Whale Badge & Activity */}
-                      <TableCell>
-                        <Stack direction="row" spacing={1} alignItems="center">
-                          {/* Activity Indicator */}
-                          <Tooltip title={trader.is_active_7d ? "Active (traded in last 7 days)" : "Inactive"}>
-                            <Box
+                    return (
+                      <TableRow
+                        key={`${trader.platform}-${trader.wallet_address}`}
+                        hover
+                        sx={{
+                          animation: `${fadeInUp} 0.25s ease both`,
+                          animationDelay: `${Math.min(idx * 20, 300)}ms`,
+                          '&:nth-of-type(odd)': { backgroundColor: alpha(theme.palette.action.hover, 0.4) },
+                        }}
+                      >
+                        {/* Rank */}
+                        <TableCell align="center">
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.25 }}>
+                            {medalEmoji(idx + 1) && (
+                              <Typography sx={{ fontSize: '1rem' }}>{medalEmoji(idx + 1)}</Typography>
+                            )}
+                            <Chip
+                              label={`#${idx + 1}`}
+                              size="small"
                               sx={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: '50%',
-                                backgroundColor: trader.is_active_7d ? 'success.main' : 'error.main',
+                                height: 20,
+                                fontSize: '0.65rem',
+                                fontWeight: 700,
+                                color: idx < 3 ? '#F59E0B' : 'text.secondary',
+                                backgroundColor: idx < 3 ? alpha('#F59E0B', 0.12) : alpha(theme.palette.divider, 0.4),
                               }}
                             />
-                          </Tooltip>
-                          
-                          {/* Wallet Address */}
-                          <Tooltip title={trader.wallet_address}>
-                            <Typography
-                              variant="body2"
-                              fontFamily="monospace"
-                              sx={{ cursor: 'pointer' }}
-                            >
-                              {formatWallet(trader.wallet_address)}
-                            </Typography>
-                          </Tooltip>
-                          
-                          {/* Whale Badge */}
-                          {trader.is_whale && (
-                            <Tooltip title="Whale - Large Position Sizes">
-                              <Chip
-                                label="🐋"
-                                size="small"
-                                color="info"
-                                sx={{ height: 20, fontSize: '0.75rem' }}
-                              />
-                            </Tooltip>
-                          )}
-                          
-                          {/* Top Market Tag */}
-                          {trader.top_market_1 && (
-                            <Tooltip title={`Specializes in: ${trader.top_market_1}`}>
-                              <Chip
-                                label={trader.top_market_1.slice(0, 20) + (trader.top_market_1.length > 20 ? '...' : '')}
-                                size="small"
-                                variant="outlined"
-                                sx={{ height: 20, fontSize: '0.65rem', maxWidth: 150 }}
-                              />
-                            </Tooltip>
-                          )}
-                        </Stack>
-                      </TableCell>
+                          </Box>
+                        </TableCell>
 
-                      {/* Strategy Type */}
-                      <TableCell>
-                        <Tooltip title={`Avg hold: ${trader.avg_hold_duration_hours?.toFixed(1) || '0'}h`}>
+                        {/* Trader */}
+                        <TableCell>
+                          <Stack direction="row" spacing={0.75} alignItems="center">
+                            <Tooltip title={trader.is_active_24h ? 'Active in last 24h' : trader.is_active_7d ? 'Active in last 7d' : 'Inactive'}>
+                              <Box sx={{
+                                width: 7, height: 7, borderRadius: '50%',
+                                backgroundColor: trader.is_active_24h ? TRADING_COLORS.YES : trader.is_active_7d ? CHART_COLORS.amber : '#6B7280',
+                              }} />
+                            </Tooltip>
+                            <Tooltip title={trader.wallet_address}>
+                              <Typography
+                                variant="body2"
+                                fontFamily={trader.handle ? 'inherit' : 'monospace'}
+                                fontWeight={trader.handle ? 600 : 400}
+                                sx={{ cursor: 'default', fontSize: '0.78rem' }}
+                              >
+                                {trader.display_name}
+                              </Typography>
+                            </Tooltip>
+                            {trader.dome_enriched && (
+                              <Tooltip title="Enriched with Dome API">
+                                <Box component="span" sx={{ width: 5, height: 5, borderRadius: '50%', backgroundColor: '#F59E0B', flexShrink: 0 }} />
+                              </Tooltip>
+                            )}
+                            {trader.is_whale && (
+                              <Tooltip title="Whale — large position sizes">
+                                <Typography sx={{ fontSize: '0.85rem' }}>🐋</Typography>
+                              </Tooltip>
+                            )}
+                          </Stack>
+                        </TableCell>
+
+                        {/* Platform */}
+                        <TableCell align="right">
                           <Chip
-                            label={getStrategyLabel(trader.strategy_type)}
+                            label={PLATFORM_LABEL[trader.platform] ?? trader.platform}
                             size="small"
-                            color={getStrategyColor(trader.strategy_type)}
+                            sx={{
+                              height: 18,
+                              fontSize: '0.65rem',
+                              fontWeight: 600,
+                              color: platColor.primary,
+                              backgroundColor: platColor.bg,
+                              border: `1px solid ${alpha(platColor.primary, 0.3)}`,
+                            }}
                           />
-                        </Tooltip>
-                      </TableCell>
+                        </TableCell>
 
-                      {/* Platform */}
-                      <TableCell>
-                        <Chip
-                          label={trader.platform}
-                          size="small"
-                          color={getPlatformColor(trader.platform)}
-                          icon={getPlatformIcon(trader.platform)}
-                        />
-                      </TableCell>
+                        {/* Volume */}
+                        <TableCell align="right">
+                          <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.8rem' }}>
+                            {fmtVol(getVol(trader))}
+                          </Typography>
+                        </TableCell>
 
-                      {/* PnL */}
-                      <TableCell align="right">
-                        {formatPnL(getPnLByTimeWindow(trader))}
-                      </TableCell>
+                        {/* Trades */}
+                        <TableCell align="right">
+                          <Typography variant="body2" sx={{ fontSize: '0.78rem' }}>
+                            {getTrades(trader).toLocaleString()}
+                          </Typography>
+                        </TableCell>
 
-                      {/* Volume */}
-                      <TableCell align="right">
-                        <Typography variant="body2" color="text.secondary">
-                          ${trader.volume.toLocaleString()}
-                        </Typography>
-                      </TableCell>
+                        {/* Winnings (REDEEM from Dome API) */}
+                        <TableCell align="right">
+                          {trader.total_winnings > 0 ? (
+                            <Typography variant="body2" fontWeight={700} sx={{ color: TRADING_COLORS.YES, fontSize: '0.8rem' }}>
+                              {fmtVol(trader.total_winnings)}
+                            </Typography>
+                          ) : (
+                            <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.72rem' }}>
+                              {trader.dome_enriched ? '–' : '…'}
+                            </Typography>
+                          )}
+                        </TableCell>
 
-                      {/* Trades */}
-                      <TableCell align="right">
-                        <Typography variant="body2">
-                          {trader.trades.toLocaleString()}
-                        </Typography>
-                      </TableCell>
+                        {/* Biggest Win */}
+                        <TableCell align="right">
+                          {trader.biggest_win > 0 ? (
+                            <Typography variant="body2" fontWeight={600} sx={{ color: CHART_COLORS.amber, fontSize: '0.78rem' }}>
+                              {fmtVol(trader.biggest_win)}
+                            </Typography>
+                          ) : (
+                            <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.72rem' }}>
+                              {trader.dome_enriched ? '–' : '…'}
+                            </Typography>
+                          )}
+                        </TableCell>
 
-                      {/* Win Rate */}
-                      <TableCell align="right">
-                        <Chip
-                          label={`${(trader.win_rate * 100).toFixed(1)}%`}
-                          size="small"
-                          color={trader.win_rate >= 0.6 ? 'success' : 'default'}
-                        />
-                      </TableCell>
+                        {/* Markets Won */}
+                        <TableCell align="right">
+                          {trader.markets_won > 0 ? (
+                            <Chip
+                              label={`${trader.markets_won} 🏆`}
+                              size="small"
+                              sx={{ height: 18, fontSize: '0.65rem', fontWeight: 700, color: TRADING_COLORS.YES, backgroundColor: alpha(TRADING_COLORS.YES, 0.1) }}
+                            />
+                          ) : (
+                            <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.72rem' }}>
+                              {trader.dome_enriched ? '–' : '…'}
+                            </Typography>
+                          )}
+                        </TableCell>
 
-                      {/* ROI */}
-                      <TableCell align="right">
-                        <Typography
-                          variant="body2"
-                          color={trader.roi >= 0 ? 'success.main' : 'error.main'}
-                          fontWeight="bold"
-                        >
-                          {trader.roi >= 0 ? '+' : ''}
-                          {trader.roi.toFixed(1)}%
-                        </Typography>
-                      </TableCell>
+                        {/* Avg Size */}
+                        <TableCell align="right">
+                          <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                            {fmtVol(trader.avg_trade_size)}
+                          </Typography>
+                        </TableCell>
 
-                      {/* Action - External Link */}
-                      <TableCell align="center">
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          endIcon={<OpenInNew />}
-                          component={MuiLink}
-                          href={trader.profile_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          sx={{ textTransform: 'none' }}
-                        >
-                          View Profile
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                        {/* Markets */}
+                        <TableCell align="right">
+                          <Typography variant="body2" sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
+                            {trader.markets_traded}
+                          </Typography>
+                        </TableCell>
+
+                        {/* Last Trade */}
+                        <TableCell align="right">
+                          <Typography variant="caption" sx={{ fontSize: '0.68rem', color: 'text.disabled' }}>
+                            {trader.last_trade ? fmtDate(trader.last_trade) : '–'}
+                          </Typography>
+                        </TableCell>
+
+                        {/* Action */}
+                        <TableCell align="center">
+                          <Tooltip title={`View on ${PLATFORM_LABEL[trader.platform] ?? trader.platform}`}>
+                            <IconButton
+                              size="small"
+                              component={MuiLink}
+                              href={trader.profile_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              sx={{ p: 0.5, color: platColor.primary }}
+                            >
+                              <OpenInNew sx={{ fontSize: 14 }} />
+                            </IconButton>
+                          </Tooltip>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
           </TableContainer>
-          
-          {/* Footer with trader count */}
-          {!loading && traders.length > 0 && (
-            <Box sx={{ p: 2, backgroundColor: 'background.paper', borderTop: 1, borderColor: 'divider' }}>
-              <Typography variant="caption" color="text.secondary">
-                Showing top {filteredTraders.length} traders (filtered from {traders.length})
+
+          {/* Table footer */}
+          {displayed.length > 0 && (
+            <Box sx={{ p: 1.5, borderTop: `1px solid ${alpha(theme.palette.divider, 0.1)}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="caption" color="text.disabled">
+                Showing {displayed.length} of 100 traders • Volume from DB • Winnings = REDEEM events from Dome API
+              </Typography>
+              <Typography variant="caption" color="text.disabled">
+                ● amber dot = enriched with Dome API • Winnings only include cashed-out (resolved) positions
               </Typography>
             </Box>
           )}
         </Card>
       )}
-
-      {/* Explanation Footer */}
-      <Card sx={{ mt: 3, p: 2 }}>
-        <Typography variant="body2" color="text.secondary">
-          <strong>💡 How to use:</strong>
-        </Typography>
-        <Typography variant="body2" color="text.secondary" component="ul" sx={{ pl: 3, mt: 1 }}>
-          <li>Browse up to <strong>2,000 top traders</strong> ranked by profit & loss (PnL)</li>
-          <li>Filter by time period (24h, 7d, 30d, all-time) and platform</li>
-          <li><strong>🐋 Whale traders</strong> have large position sizes ($50K+ avg or $500K+ volume)</li>
-          <li><strong>Strategy types</strong>: Scalper (fast trades), Swing (medium-term), Long-term, Arbitrage</li>
-          <li><strong>🟢 Green dot</strong> = Active (traded in last 7 days), <strong>🔴 Red dot</strong> = Inactive</li>
-          <li>Click "View Profile" to see full trader details on the platform website</li>
-          <li>Analyze their stats: win rate, ROI, volume, and trade count</li>
-          <li>Use insights to inform your own trading strategies</li>
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-          🔄 Data refreshed periodically from live trades. Run <code>python populate_trader_stats.py</code> to update manually.
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-          ⚠️ Note: Data shown is for educational purposes. Past performance does not guarantee future results.
-        </Typography>
-      </Card>
     </Box>
   );
 };
-

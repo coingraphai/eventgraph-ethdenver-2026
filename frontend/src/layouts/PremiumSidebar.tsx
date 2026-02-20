@@ -59,7 +59,7 @@ export const PremiumSidebar: React.FC<PremiumSidebarProps> = ({ onNewChat }) => 
 
   const navItems: NavItem[] = [
     { id: 'home', name: 'Home', icon: HomeIcon, route: '/' },
-    { id: 'markets', name: 'Markets', icon: MarketsIcon, route: '/events' },
+    // { id: 'events', name: 'Events', icon: MarketsIcon, route: '/events' }, // TODO: re-enable when complete
     { id: 'screener', name: 'Screener', icon: ScreenerIcon, route: '/screener' },
     { id: 'cross-venue', name: 'Compare', icon: CrossVenueIcon, route: '/cross-venue', color: '#3B82F6' },
     { id: 'arbitrage', name: 'Arbitrage', icon: ArbitrageIcon, route: '/arbitrage', color: '#22C55E' },

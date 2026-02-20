@@ -35,9 +35,22 @@ echo -e "   🌐 URL: http://localhost:8001"
 echo -e "${YELLOW}   ⏳ Waiting for backend to be ready...${NC}"
 sleep 5
 
+# Start Data Pipeline Scheduler (every 5 min delta)
+echo ""
+echo -e "${BLUE}2️⃣  Starting Data Pipeline Scheduler...${NC}"
+cd "$ROOT_DIR/data-pipeline"
+pkill -f "predictions_ingest.cli schedule" 2>/dev/null; sleep 1
+nohup "$ROOT_DIR/.venv/bin/python" -m predictions_ingest.cli schedule > "$ROOT_DIR/logs/pipeline.log" 2>&1 &
+PIPELINE_PID=$!
+echo $PIPELINE_PID > "$ROOT_DIR/logs/pipeline.pid"
+echo -e "${GREEN}   ✓ Pipeline scheduler started (PID: $PIPELINE_PID)${NC}"
+echo -e "   📝 Logs: logs/pipeline.log"
+echo -e "   ⏱️  Runs delta every 5 min, gold agg every 5 min"
+sleep 2
+
 # Start Frontend
 echo ""
-echo -e "${BLUE}2️⃣  Starting Frontend...${NC}"
+echo -e "${BLUE}3️⃣  Starting Frontend...${NC}"
 cd "$ROOT_DIR/frontend"
 nohup npm run dev > ../logs/frontend.log 2>&1 &
 FRONTEND_PID=$!
@@ -57,6 +70,7 @@ echo ""
 echo -e "📝 View logs:"
 echo -e "   Backend:  tail -f logs/backend.log"
 echo -e "   Frontend: tail -f logs/frontend.log"
+echo -e "   Pipeline: tail -f logs/pipeline.log"
 echo ""
 echo -e "🛑 Stop services: ./stop.sh"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

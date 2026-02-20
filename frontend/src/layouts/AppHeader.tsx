@@ -32,6 +32,7 @@ import {
 } from '@mui/icons-material';
 import { keyframes } from '@mui/system';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { useDataFreshness, FreshnessStatus } from '../hooks/useDataFreshness';
 
 const pulse = keyframes`
   0%, 100% { opacity: 1; }
@@ -47,6 +48,90 @@ const shimmer = keyframes`
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 `;
+
+// ── Data-freshness badge ──────────────────────────────────────────────────────
+
+const statusColors: Record<FreshnessStatus, string> = {
+  live:    '#22C55E',
+  stale:   '#F59E0B',
+  delayed: '#EF4444',
+  unknown: '#6B7280',
+};
+
+const DataFreshnessBadge: React.FC = () => {
+  const theme = useTheme();
+  const { ageText, status, sources, loading } = useDataFreshness();
+
+  if (loading) return null;
+
+  const dotColor = statusColors[status] ?? statusColors.unknown;
+
+  // Build a two-column tooltip: source | age
+  const sourceLines = Object.entries(sources)
+    .map(([src, info]) => `${src.charAt(0).toUpperCase() + src.slice(1)}: ${info.age_text}`)
+    .join('\n');
+
+  const tooltipContent = (
+    <Box sx={{ fontSize: '0.75rem', lineHeight: 1.8 }}>
+      {Object.entries(sources).map(([src, info]) => (
+        <Box key={src} sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+          <span style={{ opacity: 0.7, textTransform: 'capitalize' }}>{src}</span>
+          <span style={{ fontWeight: 600, color: statusColors[info.status] }}>
+            {info.age_text}
+          </span>
+        </Box>
+      ))}
+      {Object.keys(sources).length === 0 && (
+        <span style={{ opacity: 0.6 }}>No source data</span>
+      )}
+    </Box>
+  );
+
+  return (
+    <Tooltip title={tooltipContent} placement="bottom" arrow>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 0.75,
+          px: 1.25,
+          py: 0.4,
+          borderRadius: 1.5,
+          backgroundColor: alpha(dotColor, theme.palette.mode === 'dark' ? 0.08 : 0.06),
+          border: `1px solid ${alpha(dotColor, 0.2)}`,
+          cursor: 'default',
+          userSelect: 'none',
+        }}
+      >
+        {/* Pulsing dot */}
+        <Box
+          sx={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            backgroundColor: dotColor,
+            flexShrink: 0,
+            animation: status === 'live' ? `${liveDot} 2s ease-in-out infinite` : 'none',
+          }}
+        />
+        {/* Age text */}
+        <Typography
+          variant="caption"
+          sx={{
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            color: dotColor,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {ageText}
+        </Typography>
+      </Box>
+    </Tooltip>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface AppHeaderProps {
   onAskAI?: () => void;
@@ -291,6 +376,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({ onAskAI }) => {
             Ask AI
           </Button>
         )}
+
+        {/* Data Freshness Badge */}
+        <DataFreshnessBadge />
 
         {/* Theme Toggle */}
         <ThemeToggle />

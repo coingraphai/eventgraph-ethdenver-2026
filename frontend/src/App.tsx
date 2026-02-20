@@ -8,6 +8,7 @@ import { Home } from './pages/Home';
 import { Predictions } from './pages/Predictions';
 import { Screener } from './pages/Screener';
 import { EventsPage } from './pages/EventsPage';
+import { EventDetailDBPage } from './pages/EventDetailDBPage';
 import { EventAnalyticsPageV2 } from './pages/EventAnalyticsPageV2';
 import { Arbitrage } from './pages/Arbitrage';
 import { CrossVenue } from './pages/CrossVenue';
@@ -97,7 +98,9 @@ function AppContent() {
             <Route path="/" element={<Home />} />
             
             {/* Core Terminal Routes */}
-            <Route path="/events" element={<EventsPage />} />
+            {/* TODO: re-enable when Events page is complete */}
+            {/* <Route path="/events" element={<EventsPage />} /> */}
+            {/* <Route path="/events/:platform/:eventId" element={<EventDetailDBPage />} /> */}
             <Route path="/event/:platform/:eventId" element={<EventAnalyticsPageV2 />} />
             <Route path="/screener" element={<Screener />} />
             <Route path="/arbitrage" element={<Arbitrage />} />

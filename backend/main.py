@@ -170,10 +170,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configure CORS
+# Configure CORS — driven by CORS_ORIGINS env var (see app/config.py)
+# Production: same-origin through DO App Platform routing, so this is
+# only needed for direct API access (dev tools, staging, etc.)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for simplicity
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -249,6 +251,13 @@ except ImportError as e:
     logger.warning(f"⚠️ Could not load unified markets router: {e}")
 
 try:
+    from app.api.unified_events import router as unified_events_router
+    app.include_router(unified_events_router, prefix="/api/unified", tags=["unified-events"])
+    logger.info("✅ Unified events router loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Could not load unified events router: {e}")
+
+try:
     from app.api.leaderboard import router as leaderboard_router
     app.include_router(leaderboard_router, prefix="/api", tags=["leaderboard"])
     logger.info("✅ Leaderboard router loaded")
@@ -256,11 +265,32 @@ except ImportError as e:
     logger.warning(f"⚠️ Could not load leaderboard router: {e}")
 
 try:
+    from app.api.leaderboard_db import router as leaderboard_db_router
+    app.include_router(leaderboard_db_router, prefix="/api", tags=["leaderboard-db"])
+    logger.info("✅ Leaderboard DB router loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Could not load leaderboard-db router: {e}")
+
+try:
+    from app.api.leaderboard_enriched import router as leaderboard_enriched_router
+    app.include_router(leaderboard_enriched_router, prefix="/api", tags=["leaderboard-enriched"])
+    logger.info("✅ Leaderboard Enriched router loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Could not load leaderboard-enriched router: {e}")
+
+try:
     from app.api.arbitrage import router as arbitrage_router
     app.include_router(arbitrage_router, prefix="/api/arbitrage", tags=["arbitrage"])
     logger.info("✅ Arbitrage router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load arbitrage router: {e}")
+
+try:
+    from app.api.arbitrage_db import router as arbitrage_db_router
+    app.include_router(arbitrage_db_router, prefix="/api/arbitrage", tags=["arbitrage-db"])
+    logger.info("✅ Arbitrage DB router loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Could not load arbitrage-db router: {e}")
 
 try:
     from app.api.cross_venue import router as cross_venue_router
@@ -275,6 +305,13 @@ try:
     logger.info("✅ Cross-venue EVENTS router loaded")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load cross-venue-events router: {e}")
+
+try:
+    from app.api.cross_venue_db import router as cross_venue_db_router
+    app.include_router(cross_venue_db_router, prefix="/api", tags=["cross-venue-db"])
+    logger.info("✅ Cross-venue DB router loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Could not load cross-venue-db router: {e}")
 
 try:
     from app.api.alerts import router as alerts_router
@@ -344,6 +381,14 @@ try:
     logger.info("✅ Intelligence Dashboard router loaded (Direct API aggregation)")
 except ImportError as e:
     logger.warning(f"⚠️ Could not load intelligence dashboard router: {e}")
+
+# Data freshness status (used by header badge on every page)
+try:
+    from app.api.data_status import router as data_status_router
+    app.include_router(data_status_router, prefix="/api", tags=["system"])
+    logger.info("✅ Data status router loaded")
+except ImportError as e:
+    logger.warning(f"⚠️ Could not load data status router: {e}")
 
 
 @app.get("/")
