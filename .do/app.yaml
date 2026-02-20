@@ -2,14 +2,17 @@
 # DigitalOcean App Platform — EventGraph Production Spec
 # =============================================================================
 #
-# Deploy:  doctl apps create --spec .do/app.yaml
-# Update:  doctl apps update <APP_ID> --spec .do/app.yaml
+# Deploy (first time):
+#   doctl apps create --spec .do/app.yaml
 #
-# Routing (single domain, no CORS):
+# Update after a push:
+#   doctl apps update <APP_ID> --spec .do/app.yaml
+#
+# Routing (single domain, no CORS issues):
 #   /api/*  →  backend  (FastAPI, port 8001)
 #   /*      →  frontend (nginx static, port 80)
 #
-# BEFORE FIRST DEPLOY — fill in every placeholder marked 🔑
+# BEFORE DEPLOYING — replace every value marked 🔑
 # =============================================================================
 
 name: eventgraph
@@ -21,11 +24,15 @@ services:
 
   # ── 1. Frontend (nginx static site) ────────────────────────────────────────
   - name: frontend
-    source_dir: frontend
-    dockerfile_path: Dockerfile
+    github:
+      repo: coingraphai/eventgraph-ethdenver-2026
+      branch: main
+      deploy_on_push: true
+    source_dir: frontend           # Docker build context
+    dockerfile_path: frontend/Dockerfile  # path from repo root
     http_port: 80
     instance_count: 1
-    instance_size_slug: basic-xs          # 1 vCPU / 512 MB — fine for static
+    instance_size_slug: basic-xs
     health_check:
       http_path: /health
       initial_delay_seconds: 15
@@ -33,10 +40,9 @@ services:
       timeout_seconds: 5
       failure_threshold: 3
     routes:
-      - path: /                           # catch-all — must be LAST in DO routing
+      - path: /                    # catch-all — must come AFTER /api route
     envs:
-      # VITE_API_URL="" means the JS code uses relative paths like /api/...
-      # DO's router sends /api/* to the backend service — zero CORS needed.
+      # Empty string → JS uses relative /api/... paths → DO routes to backend
       - key: VITE_API_URL
         value: ""
         scope: BUILD_TIME
@@ -44,29 +50,32 @@ services:
         value: ""
         scope: BUILD_TIME
 
-  # ── 2. Backend (FastAPI) ────────────────────────────────────────────────────
+  # ── 2. Backend (FastAPI + gunicorn) ─────────────────────────────────────────
   - name: backend
+    github:
+      repo: coingraphai/eventgraph-ethdenver-2026
+      branch: main
+      deploy_on_push: true
     source_dir: backend
-    dockerfile_path: Dockerfile
+    dockerfile_path: backend/Dockerfile
     http_port: 8001
     instance_count: 1
-    instance_size_slug: professional-xs   # 1 vCPU / 1 GB — needed for ML + DB pool
+    instance_size_slug: professional-xs   # 1 vCPU / 1 GB
     health_check:
       http_path: /health
-      initial_delay_seconds: 60           # DB + cache warm-up takes time
+      initial_delay_seconds: 60
       period_seconds: 15
       timeout_seconds: 10
       failure_threshold: 5
     routes:
-      - path: /api                        # backend owns /api/*
-      - path: /health                     # expose health for external monitoring
+      - path: /api
     envs:
       - key: ENVIRONMENT
         value: production
 
       # ── Database ─────────────────────────────────────────────────────────
       - key: POSTGRES_HOST
-        value: REPLACE_WITH_DO_DB_HOST    # 🔑 e.g. db-xxx.db.ondigitalocean.com
+        value: REPLACE_WITH_DO_DB_HOST       # 🔑
         type: SECRET
       - key: POSTGRES_PORT
         value: "25060"
@@ -75,12 +84,11 @@ services:
       - key: POSTGRES_USER
         value: doadmin
       - key: POSTGRES_PASSWORD
-        value: REPLACE_WITH_DO_DB_PASSWORD  # 🔑
+        value: REPLACE_WITH_DO_DB_PASSWORD   # 🔑
         type: SECRET
       - key: POSTGRES_SSLMODE
         value: require
 
-      # Connection pool — keep low for shared managed DB
       - key: DB_POOL_SIZE
         value: "5"
       - key: DB_MAX_OVERFLOW
@@ -92,18 +100,21 @@ services:
 
       # ── API Keys ──────────────────────────────────────────────────────────
       - key: DOME_API_KEY
-        value: REPLACE_WITH_DOME_API_KEY    # 🔑
+        value: REPLACE_WITH_DOME_API_KEY     # 🔑
         type: SECRET
       - key: ANTHROPIC_API_KEY
-        value: REPLACE_WITH_ANTHROPIC_KEY   # 🔑
+        value: REPLACE_WITH_ANTHROPIC_KEY    # 🔑
         type: SECRET
 
       # ── CORS ─────────────────────────────────────────────────────────────
-      # In production, requests arrive via DO's load balancer (same domain).
-      # CORS only matters for direct API access (devtools, staging, etc.).
-      # Set to your custom domain once configured, or keep localhost for now.
+      # Requests come from same domain via DO's router — CORS not normally hit.
+      # Update to your live domain after first deploy.
       - key: CORS_ORIGINS
         value: "http://localhost:5173,http://localhost:3000"
+
+      # ── Gunicorn tuning ───────────────────────────────────────────────────
+      - key: WEB_CONCURRENCY
+        value: "2"
 
 # ── Workers ───────────────────────────────────────────────────────────────────
 
@@ -111,14 +122,18 @@ workers:
 
   # ── 3. Data Pipeline Scheduler (5-min delta loads) ─────────────────────────
   - name: pipeline
+    github:
+      repo: coingraphai/eventgraph-ethdenver-2026
+      branch: main
+      deploy_on_push: true
     source_dir: data-pipeline
-    dockerfile_path: Dockerfile
+    dockerfile_path: data-pipeline/Dockerfile
     instance_count: 1
-    instance_size_slug: basic-xs          # 1 vCPU / 512 MB — pipeline is I/O bound
+    instance_size_slug: basic-xs
     envs:
       # ── Database ─────────────────────────────────────────────────────────
       - key: POSTGRES_HOST
-        value: REPLACE_WITH_DO_DB_HOST    # 🔑 same as backend
+        value: REPLACE_WITH_DO_DB_HOST       # 🔑
         type: SECRET
       - key: POSTGRES_PORT
         value: "25060"
@@ -127,12 +142,11 @@ workers:
       - key: POSTGRES_USER
         value: doadmin
       - key: POSTGRES_PASSWORD
-        value: REPLACE_WITH_DO_DB_PASSWORD  # 🔑
+        value: REPLACE_WITH_DO_DB_PASSWORD   # 🔑
         type: SECRET
       - key: POSTGRES_SSLMODE
         value: require
 
-      # DB pool — pipeline does batch writes, keep moderate
       - key: DB_POOL_SIZE
         value: "5"
       - key: DB_POOL_MAX_OVERFLOW
@@ -142,20 +156,20 @@ workers:
 
       # ── Dome API ──────────────────────────────────────────────────────────
       - key: DOME_API_KEY
-        value: REPLACE_WITH_DOME_API_KEY  # 🔑
+        value: REPLACE_WITH_DOME_API_KEY     # 🔑
         type: SECRET
       - key: DOME_API_BASE_URL
         value: "https://api.domeapi.com/v1"
       - key: DOME_RATE_LIMIT_RPS
         value: "50"
 
-      # ── Limitless API ──────────────────────────────────────────────────────
+      # ── Limitless API ─────────────────────────────────────────────────────
       - key: LIMITLESS_API_BASE_URL
         value: "https://api.limitless.exchange"
       - key: LIMITLESS_RATE_LIMIT_RPS
         value: "5"
 
-      # ── Schedule (5-min delta, no trades) ────────────────────────────────
+      # ── Schedule ─────────────────────────────────────────────────────────
       - key: DELTA_SCHEDULE_INTERVAL_MINUTES
         value: "5"
       - key: POLYMARKET_MAX_MARKETS
@@ -167,11 +181,9 @@ workers:
       - key: KALSHI_MIN_VOLUME_USD
         value: "10000"
       - key: TRADES_TOP_N_MARKETS
-        value: "0"                        # disable trades — saves 324K API calls/month
+        value: "0"
       - key: KALSHI_TRADES_TOP_N_MARKETS
         value: "0"
-
-      # ── Retry / reliability ──────────────────────────────────────────────
       - key: RETRY_MAX_ATTEMPTS
         value: "5"
       - key: API_TIMEOUT_SECONDS
@@ -184,16 +196,18 @@ workers:
 jobs:
 
   # ── DB migrations — runs automatically BEFORE every deploy ─────────────────
-  # Applies all SQL migrations in data-pipeline/migrations/
   - name: db-migrate
     kind: PRE_DEPLOY
+    github:
+      repo: coingraphai/eventgraph-ethdenver-2026
+      branch: main
     source_dir: data-pipeline
-    dockerfile_path: Dockerfile
+    dockerfile_path: data-pipeline/Dockerfile
     run_command: predictions-ingest db migrate
     instance_size_slug: basic-xs
     envs:
       - key: POSTGRES_HOST
-        value: REPLACE_WITH_DO_DB_HOST    # 🔑
+        value: REPLACE_WITH_DO_DB_HOST       # 🔑
         type: SECRET
       - key: POSTGRES_PORT
         value: "25060"
@@ -202,7 +216,7 @@ jobs:
       - key: POSTGRES_USER
         value: doadmin
       - key: POSTGRES_PASSWORD
-        value: REPLACE_WITH_DO_DB_PASSWORD  # 🔑
+        value: REPLACE_WITH_DO_DB_PASSWORD   # 🔑
         type: SECRET
       - key: POSTGRES_SSLMODE
         value: require
