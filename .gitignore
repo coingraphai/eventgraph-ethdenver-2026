@@ -80,3 +80,4 @@ coverage/
 logs/
 *.log
 nohup.out
+frontend/dist/
