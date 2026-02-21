@@ -1,12 +1,13 @@
 """Check if the Fed Chair event now shows Kevin Warsh as top candidate."""
 import urllib.request
 import json
+import os
 
 # Check DB directly
 import asyncio
 import asyncpg
 
-DB_URL = "postgresql://doadmin:***REDACTED_DB_PASSWORD***@***REDACTED_DB_HOST***:25060/defaultdb?sslmode=require"
+DB_URL = os.environ.get("DATABASE_URL", "postgresql://doadmin@localhost:5432/defaultdb")
 
 async def main():
     conn = await asyncpg.connect(DB_URL)

@@ -8,11 +8,12 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import psycopg2
+import os
 
 DB_CONFIG = dict(
     host='***REDACTED_DB_HOST***',
     port=25060, dbname='defaultdb', user='doadmin',
-    password='***REDACTED_DB_PASSWORD***', sslmode='require'
+    password=os.environ.get("POSTGRES_PASSWORD", ""), sslmode='require'
 )
 
 

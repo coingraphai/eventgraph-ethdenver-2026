@@ -2,13 +2,14 @@
 import asyncio
 import asyncpg
 import json
+import os
 
 
 async def main():
     conn = await asyncpg.connect(
         host='***REDACTED_DB_HOST***',
         port=25060, database='defaultdb', user='doadmin',
-        password='***REDACTED_DB_PASSWORD***', ssl='require'
+        password=os.environ.get("POSTGRES_PASSWORD", ""), ssl='require'
     )
 
     # Top 15 Kalshi events by volume from events table

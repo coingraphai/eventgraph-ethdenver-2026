@@ -1,8 +1,9 @@
 """Test upsert price behavior: verify that upsert does NOT overwrite prices."""
 import asyncio
 import asyncpg
+import os
 
-DB_URL = "postgresql://doadmin:***REDACTED_DB_PASSWORD***@***REDACTED_DB_HOST***:25060/defaultdb?sslmode=require"
+DB_URL = os.environ.get("DATABASE_URL", "postgresql://doadmin@localhost:5432/defaultdb")
 
 async def main():
     conn = await asyncpg.connect(DB_URL)

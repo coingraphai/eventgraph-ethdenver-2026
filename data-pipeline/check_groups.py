@@ -1,9 +1,10 @@
 import psycopg2, json
+import os
 
 conn = psycopg2.connect(
     host="***REDACTED_DB_HOST***",
     port=25060, dbname="defaultdb", user="doadmin",
-    password="***REDACTED_DB_PASSWORD***", sslmode="require"
+    password=os.environ.get("POSTGRES_PASSWORD", ""), sslmode="require"
 )
 cur = conn.cursor()
 

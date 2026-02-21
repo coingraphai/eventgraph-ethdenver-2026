@@ -5,8 +5,9 @@ and update the DB directly.
 import asyncio
 import aiohttp
 import asyncpg
+import os
 
-DB_URL = "postgresql://doadmin:***REDACTED_DB_PASSWORD***@***REDACTED_DB_HOST***:25060/defaultdb?sslmode=require"
+DB_URL = os.environ.get("DATABASE_URL", "postgresql://doadmin@localhost:5432/defaultdb")
 API_KEY = "***REDACTED_DOME_KEY***"
 BASE_URL = "https://api.domeapi.io/v1"
 
