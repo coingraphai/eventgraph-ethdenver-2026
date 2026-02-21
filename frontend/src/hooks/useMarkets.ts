@@ -1,9 +1,11 @@
 /**
  * useMarkets Hook
- * Fetches and manages prediction market data from Dome API
+ * Fetches and manages prediction market data from DATABASE (fast)
+ * Falls back to Dome API if database is unavailable
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import axios from 'axios';
 import { fetchAllMarkets } from '../services/domeClient';
 import { 
   UnifiedMarket, 
@@ -209,17 +211,69 @@ export function useMarkets(options: UseMarketsOptions = {}): UseMarketsReturn {
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   /**
-   * Fetch markets from API or use mock data
+   * Convert database event to UnifiedMarket format
+   */
+  const convertDbEventToMarket = (event: any): UnifiedMarket => {
+    const yesPrice = event.top_market?.yes_price ?? 0.5;
+    const endTime = event.end_time ? event.end_time : null;
+    const now = Math.floor(Date.now() / 1000);
+    const expiryDays = endTime ? Math.max(0, Math.floor((endTime - now) / 86400)) : 999;
+    
+    return {
+      id: `${event.platform}_${event.event_id}`,
+      platform: event.platform?.toUpperCase() || 'POLYMARKET',
+      title: event.title || event.event_title || 'Unknown Event',
+      category: event.category || 'Other',
+      yesPrice: yesPrice,
+      noPrice: 1 - yesPrice,
+      spread: 0.02, // Default spread
+      change24h: 0, // Not available from DB events endpoint
+      liquidity: event.liquidity || 0,
+      volume24h: event.volume_24h || 0,
+      expiryTime: endTime,
+      expiryDays: expiryDays,
+      arbitrageScore: 0,
+      hasArb: false,
+      sourceUrl: event.link || event.top_market?.source_url || '',
+      // Extra fields for navigation
+      eventId: event.event_id,
+      marketCount: event.market_count || 1,
+      totalVolume: event.total_volume || 0,
+      image: event.image,
+    };
+  };
+
+  /**
+   * Fetch markets from DATABASE (fast) with fallback to API
    */
   const fetchMarkets = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
+      const apiBase = import.meta.env.VITE_API_BASE_URL || '';
+      
+      // Try database first (fast)
+      const dbResponse = await axios.get(`${apiBase}/db/events`, {
+        params: {
+          page: 1,
+          page_size: limit,
+          sort_by: 'volume',
+        }
+      });
+      
+      if (dbResponse.data?.events?.length > 0) {
+        const dbMarkets = dbResponse.data.events.map(convertDbEventToMarket);
+        console.log(`Loaded ${dbMarkets.length} events from database`);
+        setMarkets(dbMarkets);
+        return;
+      }
+      
+      // Fallback to Dome API if database is empty
+      console.log('Database empty, falling back to Dome API');
       const apiKey = import.meta.env.VITE_DOME_API_KEY;
       
       if (!apiKey) {
-        // Use mock data if no API key
         console.log('No DOME_API_KEY found, using mock data');
         setMarkets(MOCK_MARKETS);
         return;
@@ -229,7 +283,6 @@ export function useMarkets(options: UseMarketsOptions = {}): UseMarketsReturn {
       const normalized = normalizeAllMarkets(polymarket, kalshi);
       
       if (normalized.length === 0) {
-        // Fallback to mock if API returns empty
         console.log('API returned empty, using mock data');
         setMarkets(MOCK_MARKETS);
       } else {

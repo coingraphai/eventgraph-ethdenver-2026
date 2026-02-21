@@ -867,6 +867,18 @@ class DomeKalshiIngester(SourceIngester):
                     if raw_price:
                         price = self.client.normalize_price(raw_price, market.source_market_id)
                         await self.silver_writer.insert_price(price)
+                        # Also update markets.yes_price from the authoritative price endpoint
+                        if price.yes_price is not None:
+                            try:
+                                updated = await self.silver_writer.update_market_price(
+                                    source_market_id=market.source_market_id,
+                                    yes_price=float(price.yes_price),
+                                    no_price=float(price.no_price) if price.no_price else None,
+                                )
+                                if updated == 0:
+                                    logger.warning("update_market_price found no row", market_id=market.source_market_id)
+                            except Exception as upe:
+                                logger.error("update_market_price failed", market_id=market.source_market_id, error=str(upe))
                         result.prices_fetched += 1
                         result.prices_updated += 1
                 except Exception as e:
@@ -948,7 +960,7 @@ class DomeKalshiIngester(SourceIngester):
             upserted, _ = await self.silver_writer.upsert_markets(markets)
             result.markets_upserted = upserted
             
-            # Update prices
+            # Update prices - use the dedicated market-price endpoint (more accurate than last_price in market list)
             active_markets = [m for m in markets if m.is_active]
             for market in active_markets:
                 try:
@@ -956,10 +968,23 @@ class DomeKalshiIngester(SourceIngester):
                     if raw_price:
                         price = self.client.normalize_price(raw_price, market.source_market_id)
                         await self.silver_writer.insert_price(price)
+                        # Also update markets.yes_price from the authoritative price endpoint
+                        # (market list's last_price can be stale; market-price endpoint is real-time)
+                        if price.yes_price is not None:
+                            try:
+                                updated = await self.silver_writer.update_market_price(
+                                    source_market_id=market.source_market_id,
+                                    yes_price=float(price.yes_price),
+                                    no_price=float(price.no_price) if price.no_price else None,
+                                )
+                                if updated == 0:
+                                    logger.warning("update_market_price found no row", market_id=market.source_market_id)
+                            except Exception as upe:
+                                logger.error("update_market_price failed", market_id=market.source_market_id, error=str(upe))
                         result.prices_fetched += 1
                         result.prices_updated += 1
                 except Exception as e:
-                    logger.debug("Failed to fetch price", market_id=market.source_market_id)
+                    logger.warning("Failed to fetch/update price", market_id=market.source_market_id, error=str(e))
             
             # Fetch recent trades for top Kalshi markets
             if self.settings.trades_top_n_markets > 0:

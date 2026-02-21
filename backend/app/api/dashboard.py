@@ -6,11 +6,14 @@ Provides consolidated statistics from Polymarket and Kalshi.
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, List, Any
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from collections import Counter
 
 from app.services.prediction_mcp_client import PredictionMCPClient
 from app.config import settings
+from app.database.session import get_db
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -251,3 +254,52 @@ async def get_dashboard_stats(
             status_code=500,
             detail=f"Failed to fetch dashboard statistics: {str(e)}"
         )
+
+
+@router.get("/data-freshness")
+async def get_data_freshness(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    """
+    Get the last update times for all data sources.
+    Returns when each platform's data was last refreshed in the database.
+    """
+    try:
+        result = db.execute(text("""
+            SELECT 
+                cache_key, 
+                platform, 
+                updated_at,
+                item_count,
+                fetch_status
+            FROM production_cache 
+            WHERE cache_key LIKE '%_events'
+            ORDER BY updated_at DESC
+        """)).fetchall()
+        
+        platforms = {}
+        latest_update = None
+        
+        for row in result:
+            update_time = row.updated_at
+            if update_time:
+                if latest_update is None or update_time > latest_update:
+                    latest_update = update_time
+                platforms[row.platform] = {
+                    "updated_at": update_time.isoformat() if update_time else None,
+                    "item_count": row.item_count or 0,
+                    "status": row.fetch_status or "unknown"
+                }
+        
+        return {
+            "last_updated": latest_update.isoformat() if latest_update else None,
+            "platforms": platforms,
+            "server_time": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error fetching data freshness: {e}")
+        return {
+            "last_updated": None,
+            "platforms": {},
+            "server_time": datetime.now(timezone.utc).isoformat(),
+            "error": str(e)
+        }
+

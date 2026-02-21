@@ -29,7 +29,7 @@ from app.services.dome_api_service import DomeAPIService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/market-intelligence", tags=["Market Intelligence"])
+router = APIRouter(prefix="/market-intelligence", tags=["Market Intelligence"])
 
 
 # ============================================================================

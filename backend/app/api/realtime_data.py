@@ -13,7 +13,7 @@ from app.services.dome_api_service import DomeAPIService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/realtime", tags=["Real-time Market Data"])
+router = APIRouter(prefix="/realtime", tags=["Real-time Market Data"])
 
 
 # ============================================================================

@@ -9,7 +9,7 @@ export type Platform = 'POLYMARKET' | 'KALSHI';
 
 export interface UnifiedMarket {
   id: string;
-  platform: Platform;
+  platform: Platform | string;
   title: string;
   category: string;
   yesPrice: number;        // Normalized 0-1
@@ -24,6 +24,11 @@ export interface UnifiedMarket {
   sourceUrl: string;
   hasArb: boolean;
   raw?: any;               // Original data for debugging
+  // Extra fields for database events
+  eventId?: string;
+  marketCount?: number;
+  totalVolume?: number;
+  image?: string;
 }
 
 // Category mapping for normalization

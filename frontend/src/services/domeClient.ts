@@ -36,6 +36,7 @@ export interface PolymarketMarket {
   category?: string;
   active: boolean;
   slug?: string;
+  event_slug?: string;
   conditionId?: string;
 }
 

@@ -12,7 +12,7 @@ import {
   useTheme, alpha,
 } from '@mui/material';
 import {
-  Search, ViewModule, ViewList, AccessTime, TrendingUp, Refresh,
+  Search, ViewModule, ViewList, AccessTime, TrendingUp, Refresh, OpenInNew,
 } from '@mui/icons-material';
 import { keyframes } from '@mui/system';
 import {
@@ -64,6 +64,20 @@ const PC = (platform: string): { primary: string; bg: string } => ({
   limitless:  { primary: PLATFORM_COLORS.limitless?.primary  ?? '#8B5CF6', bg: PLATFORM_COLORS.limitless?.bg  ?? 'rgba(139,92,246,0.12)' },
 } as Record<string, { primary: string; bg: string }>)[platform] ?? { primary: '#6B7280', bg: 'rgba(107,114,128,0.12)' };
 
+const fmtDate = (ts?: number | null): string => {
+  if (!ts) return '—';
+  return new Date(ts * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+};
+
+const STATUS_COLORS: Record<string, { color: string; bg: string }> = {
+  active:   { color: '#22C55E', bg: 'rgba(34,197,94,0.12)' },
+  open:     { color: '#22C55E', bg: 'rgba(34,197,94,0.12)' },
+  closed:   { color: '#6B7280', bg: 'rgba(107,114,128,0.12)' },
+  resolved: { color: '#3B82F6', bg: 'rgba(59,130,246,0.12)' },
+  paused:   { color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
+};
+const getStatusColor = (s: string) => STATUS_COLORS[s?.toLowerCase()] ?? STATUS_COLORS.active;
+
 // ─── EventCard ────────────────────────────────────────────────────────────────
 interface EventCardProps { event: EventSummary; index: number; onClick: () => void; }
 
@@ -84,19 +98,34 @@ const EventCard: React.FC<EventCardProps> = ({ event, index, onClick }) => {
           </Box>
         )}
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 0.4 }}>
+          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mb: 0.4, flexWrap: 'wrap', gap: 0.3 }}>
             <Chip label={PLATFORM_DISPLAY[event.platform] || event.platform} size="small" sx={{ backgroundColor: colors.bg, color: colors.primary, fontWeight: 700, fontSize: '0.62rem', height: 17 }} />
             {event.market_count > 1 && (
               <Chip label={`${event.market_count} markets`} size="small" sx={{ backgroundColor: alpha(theme.palette.text.secondary, 0.08), color: 'text.secondary', fontSize: '0.60rem', height: 17 }} />
+            )}
+            {event.category && (
+              <Chip label={event.category} size="small" sx={{ backgroundColor: alpha(theme.palette.text.secondary, 0.07), color: 'text.disabled', fontSize: '0.58rem', height: 17, textTransform: 'capitalize' }} />
             )}
           </Stack>
           <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={event.title}>
             {event.title}
           </Typography>
-          {event.sample_titles.length > 0 && event.platform !== 'limitless' && (
-            <Typography variant="caption" color="text.disabled" sx={{ display: 'block', mt: 0.25, fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={event.sample_titles.join(' · ')}>
-              {event.sample_titles[0]}
-            </Typography>
+          {event.market_count > 1 && event.top_prob_title && (
+            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.3 }}>
+              <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.63rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={event.top_prob_title}>
+                {event.top_prob_title}
+              </Typography>
+              {event.top_yes_price != null && (
+                <Box component="span" sx={{ flexShrink: 0, fontSize: '0.6rem', fontWeight: 700, fontFamily: 'monospace', px: 0.5, py: 0.1, borderRadius: 0.5, backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' }}>
+                  Y {Math.round(event.top_yes_price * 100)}¢
+                </Box>
+              )}
+              {event.top_no_price != null && (
+                <Box component="span" sx={{ flexShrink: 0, fontSize: '0.6rem', fontWeight: 700, fontFamily: 'monospace', px: 0.5, py: 0.1, borderRadius: 0.5, backgroundColor: 'rgba(239,68,68,0.12)', color: '#EF4444' }}>
+                  N {Math.round(event.top_no_price * 100)}¢
+                </Box>
+              )}
+            </Stack>
           )}
         </Box>
       </Stack>
@@ -110,6 +139,18 @@ const EventCard: React.FC<EventCardProps> = ({ event, index, onClick }) => {
             <Box>
               <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.6rem', display: 'block' }}>24h</Typography>
               <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.72rem', color: '#22C55E' }}>{fmtVolume(event.volume_24h)}</Typography>
+            </Box>
+          )}
+          {event.volume_7d > 0 && (
+            <Box>
+              <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.6rem', display: 'block' }}>7d</Typography>
+              <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.72rem', color: '#3B82F6' }}>{fmtVolume(event.volume_7d)}</Typography>
+            </Box>
+          )}
+          {event.trades_24h > 0 && (
+            <Box>
+              <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.6rem', display: 'block' }}>Trades</Typography>
+              <Typography variant="caption" sx={{ fontFamily: 'monospace', fontWeight: 600, fontSize: '0.72rem', color: '#F59E0B' }}>{event.trades_24h.toLocaleString()}</Typography>
             </Box>
           )}
         </Stack>
@@ -128,8 +169,9 @@ interface EventRowProps { event: EventSummary; index: number; onClick: () => voi
 const EventRow: React.FC<EventRowProps> = ({ event, index, onClick }) => {
   const theme = useTheme();
   const colors = PC(event.platform);
+  const sc = getStatusColor(event.status);
   return (
-    <Box onClick={onClick} sx={{ display: 'grid', gridTemplateColumns: '44px 1fr 120px 90px 90px 80px 80px', alignItems: 'center', gap: 1.5, px: 2, py: 1.25, cursor: 'pointer', borderBottom: `1px solid ${alpha(theme.palette.divider, 0.06)}`, animation: `${fadeInUp} 0.2s ease ${index * 0.008}s both`, transition: 'background 0.1s ease', '&:hover': { backgroundColor: alpha(colors.primary, 0.04) }, '&:last-child': { borderBottom: 'none' } }}>
+    <Box onClick={onClick} sx={{ display: 'grid', gridTemplateColumns: '44px 1fr 100px 110px 55px 90px 80px 80px 85px 72px 44px', alignItems: 'center', gap: 1.5, px: 2, py: 1.25, cursor: 'pointer', borderBottom: `1px solid ${alpha(theme.palette.divider, 0.06)}`, animation: `${fadeInUp} 0.2s ease ${index * 0.008}s both`, transition: 'background 0.1s ease', '&:hover': { backgroundColor: alpha(colors.primary, 0.04) }, '&:last-child': { borderBottom: 'none' } }}>
       {event.image_url ? (
         <Box component="img" src={event.image_url} sx={{ width: 36, height: 36, borderRadius: 1.5, objectFit: 'cover', border: `1px solid ${alpha(theme.palette.divider, 0.12)}` }} />
       ) : (
@@ -139,15 +181,39 @@ const EventRow: React.FC<EventRowProps> = ({ event, index, onClick }) => {
       )}
       <Box sx={{ minWidth: 0 }}>
         <Typography variant="body2" sx={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={event.title}>{event.title}</Typography>
-        {event.sample_titles.length > 0 && (
-          <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{event.sample_titles[0]}</Typography>
+        {event.market_count > 1 && event.top_prob_title && (
+          <Stack direction="row" spacing={0.4} alignItems="center" sx={{ mt: 0.2 }}>
+            <Typography variant="caption" color="text.disabled" sx={{ fontSize: '0.63rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{event.top_prob_title}</Typography>
+            {event.top_yes_price != null && (
+              <Box component="span" sx={{ flexShrink: 0, fontSize: '0.58rem', fontWeight: 700, fontFamily: 'monospace', px: 0.4, borderRadius: 0.5, backgroundColor: 'rgba(34,197,94,0.12)', color: '#22C55E' }}>
+                Y {Math.round(event.top_yes_price * 100)}¢
+              </Box>
+            )}
+            {event.top_no_price != null && (
+              <Box component="span" sx={{ flexShrink: 0, fontSize: '0.58rem', fontWeight: 700, fontFamily: 'monospace', px: 0.4, borderRadius: 0.5, backgroundColor: 'rgba(239,68,68,0.12)', color: '#EF4444' }}>
+                N {Math.round(event.top_no_price * 100)}¢
+              </Box>
+            )}
+          </Stack>
         )}
       </Box>
       <Chip label={PLATFORM_DISPLAY[event.platform] || event.platform} size="small" sx={{ backgroundColor: colors.bg, color: colors.primary, fontWeight: 700, fontSize: '0.68rem', justifySelf: 'start' }} />
-      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'right', fontFamily: 'monospace' }}>{event.market_count} {event.market_count === 1 ? 'mkt' : 'mkts'}</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'capitalize' }}>{event.category || '—'}</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'right', fontFamily: 'monospace', fontSize: '0.8rem' }}>{event.market_count}</Typography>
       <Typography variant="body2" sx={{ textAlign: 'right', fontFamily: 'monospace', fontWeight: 600 }}>{fmtVolume(event.total_volume)}</Typography>
       <Typography variant="body2" sx={{ textAlign: 'right', fontFamily: 'monospace', color: event.volume_24h > 0 ? '#22C55E' : 'text.disabled' }}>{event.volume_24h > 0 ? fmtVolume(event.volume_24h) : '—'}</Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'right', fontSize: '0.75rem' }}>{fmtTimeRemaining(event.end_time)}</Typography>
+      <Typography variant="body2" sx={{ textAlign: 'right', fontFamily: 'monospace', color: event.volume_7d > 0 ? '#3B82F6' : 'text.disabled' }}>{event.volume_7d > 0 ? fmtVolume(event.volume_7d) : '—'}</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'right', fontSize: '0.75rem' }}>{fmtDate(event.end_time)}</Typography>
+      <Chip label={event.status || 'active'} size="small" sx={{ backgroundColor: sc.bg, color: sc.color, fontWeight: 700, fontSize: '0.62rem', height: 20, textTransform: 'capitalize', justifySelf: 'start' }} />
+      <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+        {event.source_url ? (
+          <IconButton size="small" component="a" href={event.source_url} target="_blank" rel="noopener noreferrer"
+            onClick={e => e.stopPropagation()}
+            sx={{ color: 'text.disabled', '&:hover': { color: colors.primary } }}>
+            <OpenInNew sx={{ fontSize: 14 }} />
+          </IconButton>
+        ) : <Box sx={{ width: 28 }} />}
+      </Box>
     </Box>
   );
 };
@@ -162,7 +228,7 @@ export const EventsPage: React.FC = () => {
   const [sort, setSort] = useState<EventSort>('volume_desc');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
-  const [displayMode, setDisplayMode] = useState<'grid' | 'list'>('grid');
+  const [displayMode, setDisplayMode] = useState<'grid' | 'list'>('list');
   const [page, setPage] = useState(1);
 
   const [events, setEvents] = useState<EventSummary[]>([]);
@@ -312,18 +378,18 @@ export const EventsPage: React.FC = () => {
       {/* List */}
       {displayMode === 'list' && (
         <Paper elevation={0} sx={{ borderRadius: 2, overflow: 'hidden', border: `1px solid ${alpha(theme.palette.divider, 0.1)}`, backgroundColor: alpha(theme.palette.background.paper, 0.6), backdropFilter: 'blur(10px)' }}>
-          <Box sx={{ display: 'grid', gridTemplateColumns: '44px 1fr 120px 90px 90px 80px 80px', gap: 1.5, px: 2, py: 1, backgroundColor: alpha(theme.palette.primary.main, 0.04), borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}` }}>
-            {['', 'Event', 'Platform', 'Markets', 'Volume', '24h Vol', 'Ends In'].map((h, i) => (
-              <Typography key={i} variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', fontSize: '0.7rem', textAlign: i > 2 ? 'right' : 'left' }}>{h}</Typography>
+          <Box sx={{ display: 'grid', gridTemplateColumns: '44px 1fr 100px 110px 55px 90px 80px 80px 85px 72px 44px', gap: 1.5, px: 2, py: 1, backgroundColor: alpha(theme.palette.primary.main, 0.04), borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}` }}>
+            {['', 'Event', 'Platform', 'Category', 'Mkts', 'Volume', '24h Vol', '7d Vol', 'End', 'Status', 'Link'].map((h, i) => (
+              <Typography key={i} variant="caption" sx={{ fontWeight: 700, color: 'text.secondary', fontSize: '0.7rem', textAlign: i >= 4 && i <= 8 ? 'right' : 'left' }}>{h}</Typography>
             ))}
           </Box>
           {loading ? (
             [...Array(10)].map((_, i) => (
-              <Box key={i} sx={{ display: 'grid', gridTemplateColumns: '44px 1fr 120px 90px 90px 80px 80px', gap: 1.5, px: 2, py: 1.5, borderBottom: `1px solid ${alpha(theme.palette.divider, 0.06)}` }}>
+              <Box key={i} sx={{ display: 'grid', gridTemplateColumns: '44px 1fr 100px 110px 55px 90px 80px 80px 85px 72px 44px', gap: 1.5, px: 2, py: 1.5, borderBottom: `1px solid ${alpha(theme.palette.divider, 0.06)}` }}>
                 <Skeleton variant="rectangular" width={36} height={36} sx={{ borderRadius: 1.5 }} animation="wave" />
                 <Box><Skeleton animation="wave" height={16} /><Skeleton animation="wave" height={13} width="60%" sx={{ mt: 0.25 }} /></Box>
                 <Skeleton animation="wave" height={22} width={80} />
-                {[50, 55, 60, 45, 40].map((w, j) => <Skeleton key={j} animation="wave" height={16} width={w} sx={{ ml: 'auto' }} />)}
+                {[70, 30, 55, 55, 50, 50, 50, 28, 28].map((w, j) => <Skeleton key={j} animation="wave" height={16} width={w} sx={{ ml: j >= 2 && j <= 6 ? 'auto' : 0 }} />)}
               </Box>
             ))
           ) : events.length === 0 ? (

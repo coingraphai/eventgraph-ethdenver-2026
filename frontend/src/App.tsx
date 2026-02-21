@@ -10,12 +10,13 @@ import { Screener } from './pages/Screener';
 import { EventsPage } from './pages/EventsPage';
 import { EventDetailDBPage } from './pages/EventDetailDBPage';
 import { EventAnalyticsPageV2 } from './pages/EventAnalyticsPageV2';
+import { Markets } from './pages/Markets';
 import { Arbitrage } from './pages/Arbitrage';
 import { CrossVenue } from './pages/CrossVenue';
-import { Leaderboard } from './pages/Leaderboard';
-import { Alerts } from './pages/Alerts';
+// import { Leaderboard } from './pages/Leaderboard'; // Hidden for now
+// import { Alerts } from './pages/Alerts'; // Hidden for now
 import { Execution } from './pages/Execution';
-import { Pricing } from './pages/Pricing';
+// import { Pricing } from './pages/Pricing'; // Hidden for now
 import { Terms } from './pages/Terms';
 import { Privacy } from './pages/Privacy';
 import { NotFound } from './pages/NotFound';
@@ -98,20 +99,20 @@ function AppContent() {
             <Route path="/" element={<Home />} />
             
             {/* Core Terminal Routes */}
-            {/* TODO: re-enable when Events page is complete */}
-            {/* <Route path="/events" element={<EventsPage />} /> */}
-            {/* <Route path="/events/:platform/:eventId" element={<EventDetailDBPage />} /> */}
+            <Route path="/markets" element={<Markets />} />
+            <Route path="/events" element={<EventsPage />} />
+            <Route path="/events/:platform/:eventId" element={<EventDetailDBPage />} />
             <Route path="/event/:platform/:eventId" element={<EventAnalyticsPageV2 />} />
             <Route path="/screener" element={<Screener />} />
             <Route path="/arbitrage" element={<Arbitrage />} />
             <Route path="/cross-venue" element={<CrossVenue />} />
-            <Route path="/leaderboard" element={<Leaderboard />} />
-            <Route path="/alerts" element={<Alerts />} />
+            {/* <Route path="/leaderboard" element={<Leaderboard />} /> */}{/* Hidden for now */}
+            {/* <Route path="/alerts" element={<Alerts />} /> */}{/* Hidden for now */}
             <Route path="/execution" element={<Execution />} />
             <Route path="/vault" element={<Execution />} />
             
             {/* Legal & Info Pages */}
-            <Route path="/pricing" element={<Pricing />} />
+            {/* <Route path="/pricing" element={<Pricing />} /> */}{/* Hidden for now */}
             <Route path="/terms" element={<Terms />} />
             <Route path="/privacy" element={<Privacy />} />
             

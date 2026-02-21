@@ -269,10 +269,10 @@ class SilverWriter:
                 resolution_value = COALESCE(EXCLUDED.resolution_value, predictions_silver.markets.resolution_value),
                 outcome_count = EXCLUDED.outcome_count,
                 outcomes = EXCLUDED.outcomes,
-                yes_price = EXCLUDED.yes_price,
-                no_price = EXCLUDED.no_price,
-                last_trade_price = EXCLUDED.last_trade_price,
-                mid_price = EXCLUDED.mid_price,
+                -- Price fields intentionally EXCLUDED from update.
+                -- Prices are set only on INSERT (new markets) and updated
+                -- exclusively by update_market_price() which uses the
+                -- authoritative per-market price endpoint.
                 volume_24h = EXCLUDED.volume_24h,
                 volume_7d = EXCLUDED.volume_7d,
                 volume_30d = EXCLUDED.volume_30d,
@@ -408,10 +408,10 @@ class SilverWriter:
                 resolution_value = COALESCE(EXCLUDED.resolution_value, predictions_silver.markets.resolution_value),
                 outcome_count = EXCLUDED.outcome_count,
                 outcomes = EXCLUDED.outcomes,
-                yes_price = EXCLUDED.yes_price,
-                no_price = EXCLUDED.no_price,
-                last_trade_price = EXCLUDED.last_trade_price,
-                mid_price = EXCLUDED.mid_price,
+                -- Price fields intentionally EXCLUDED from update.
+                -- Prices are set only on INSERT (new markets) and updated
+                -- exclusively by update_market_price() which uses the
+                -- authoritative per-market price endpoint.
                 volume_24h = EXCLUDED.volume_24h,
                 volume_7d = EXCLUDED.volume_7d,
                 volume_30d = EXCLUDED.volume_30d,
@@ -580,6 +580,19 @@ class SilverWriter:
                 yes_price,
                 no_price,
                 mid_price,
+            )
+        
+        if result:
+            logger.debug(
+                "update_market_price OK",
+                market_id=source_market_id,
+                yes_price=yes_price,
+                no_price=no_price,
+            )
+        else:
+            logger.warning(
+                "update_market_price: no row found",
+                market_id=source_market_id,
             )
         
         return 1 if result else 0

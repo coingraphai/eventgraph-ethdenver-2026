@@ -143,7 +143,7 @@ function matchMarkets(poly: DbMarket[], kal: DbMarket[]): MatchedPair[] {
     kal.forEach((km, i) => {
       if (used.has(i)) return;
       const s = jaccard(pt, keyTerms(km.title));
-      if (s > bs && s > 0.1) { bs = s; bi = i; }
+      if (s > bs && s > 0.15) { bs = s; bi = i; }
     });
     if (bi >= 0) {
       used.add(bi);
@@ -391,6 +391,13 @@ const PairTableRow: React.FC<{ pair: FlatPair; idx: number }> = ({ pair, idx }) 
             color: confColor(pair.confidence),
             backgroundColor: alpha(confColor(pair.confidence), 0.1),
           }} />
+          {pair.category && (
+            <Chip label={pair.category} size="small" sx={{
+              height: 13, fontSize: '0.50rem', fontWeight: 600,
+              color: 'text.secondary',
+              backgroundColor: alpha(theme.palette.divider, 0.15),
+            }} />
+          )}
           {pair.endDate && (
             <Typography sx={{ fontSize: '0.58rem', color: 'text.disabled' }}>
               {fmtDate(pair.endDate)}
@@ -457,6 +464,13 @@ const PairTableRow: React.FC<{ pair: FlatPair; idx: number }> = ({ pair, idx }) 
         </Tooltip>
         <PricePill yes={pair.kalshi.yes_price} no={pair.kalshi.no_price} size="sm" />
       </TableCell>
+
+      {/* Combined Volume */}
+      <TableCell sx={{ ...tcSx, textAlign: 'center', px: 1 }}>
+        <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: 'text.secondary' }}>
+          {fmtVol(pair.poly.volume + pair.kalshi.volume)}
+        </Typography>
+      </TableCell>
     </TableRow>
   );
 };
@@ -473,12 +487,13 @@ export const CrossVenue: React.FC = () => {
   const [search,      setSearch]      = useState('');
   const [sortBy,      setSortBy]      = useState<'gap' | 'volume' | 'similarity'>('gap');
   const [displayMode, setDisplayMode] = useState<'table' | 'grid'>('table');
+  const [confFilter,  setConfFilter]  = useState<'all' | 'high' | 'high+medium'>('high+medium');
 
   const fetchData = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       const res = await fetch(
-        `${API_BASE}/api/cross-venue-events-db?min_similarity=0.05&min_volume=0&limit=200`
+        `${API_BASE}/api/cross-venue-events-db?min_similarity=0.25&min_volume=0&limit=200`
       );
       if (!res.ok) throw new Error(`API error ${res.status}`);
       const data = await res.json();
@@ -530,6 +545,14 @@ export const CrossVenue: React.FC = () => {
 
   const filtered = useMemo<FlatPair[]>(() => {
     let out = allPairs;
+
+    // Confidence filter — hide low-confidence matches by default
+    if (confFilter === 'high') {
+      out = out.filter(p => p.confidence === 'high');
+    } else if (confFilter === 'high+medium') {
+      out = out.filter(p => p.confidence === 'high' || p.confidence === 'medium');
+    }
+
     if (search) {
       const q = search.toLowerCase();
       out = out.filter(p =>
@@ -547,7 +570,7 @@ export const CrossVenue: React.FC = () => {
         : b.spread - a.spread  // gap desc (default)
     );
     return sorted;
-  }, [allPairs, search, sortBy]);
+  }, [allPairs, search, sortBy, confFilter]);
 
   return (
     <Box sx={{ p: 3, minHeight: '100vh' }}>
@@ -560,7 +583,7 @@ export const CrossVenue: React.FC = () => {
             Cross-Venue
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Polymarket ↔ Kalshi · every matched market pair, sorted by gap
+            Polymarket ↔ Kalshi · matched market pairs across venues
           </Typography>
         </Box>
         <Button
@@ -595,6 +618,15 @@ export const CrossVenue: React.FC = () => {
           </Select>
         </FormControl>
 
+        <FormControl size="small" sx={{ minWidth: 150 }}>
+          <InputLabel>Confidence</InputLabel>
+          <Select value={confFilter} label="Confidence" onChange={e => setConfFilter(e.target.value as any)}>
+            <MenuItem value="high">High only</MenuItem>
+            <MenuItem value="high+medium">High + Medium</MenuItem>
+            <MenuItem value="all">All matches</MenuItem>
+          </Select>
+        </FormControl>
+
         <ToggleButtonGroup
           value={displayMode} exclusive
           onChange={(_, val) => val && setDisplayMode(val)}
@@ -609,10 +641,23 @@ export const CrossVenue: React.FC = () => {
         </ToggleButtonGroup>
 
         {!loading && (
-          <Typography variant="caption" sx={{ color: 'text.disabled' }}>
-            {filtered.length} matched pair{filtered.length !== 1 ? 's' : ''}
-            {stats ? ` · ${fmtVol(stats.total_volume)} combined` : ''}
-          </Typography>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+              {filtered.length} pair{filtered.length !== 1 ? 's' : ''}
+            </Typography>
+            {stats && (
+              <>
+                <Chip label={`${stats.high_confidence} high`} size="small" sx={{
+                  height: 16, fontSize: '0.55rem', fontWeight: 700,
+                  color: '#22c55e', backgroundColor: alpha('#22c55e', 0.1),
+                }} />
+                <Chip label={`${stats.medium_confidence} med`} size="small" sx={{
+                  height: 16, fontSize: '0.55rem', fontWeight: 700,
+                  color: '#f59e0b', backgroundColor: alpha('#f59e0b', 0.1),
+                }} />
+              </>
+            )}
+          </Stack>
         )}
       </Box>
 
@@ -674,6 +719,15 @@ export const CrossVenue: React.FC = () => {
                       <Chip label="KAL" size="small" sx={{ height: 14, fontSize: '0.55rem', fontWeight: 800, color: KAL.primary, backgroundColor: KAL.bg }} />
                       Market · Odds
                     </Box>
+                  </TableCell>
+                  <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.68rem', py: 1, px: 1, backgroundColor: alpha(theme.palette.background.default, 0.95) }}>
+                    <TableSortLabel
+                      active={sortBy === 'volume'}
+                      direction="desc"
+                      onClick={() => setSortBy('volume')}
+                    >
+                      Volume
+                    </TableSortLabel>
                   </TableCell>
                 </TableRow>
               </TableHead>

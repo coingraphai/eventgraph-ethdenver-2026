@@ -24,6 +24,7 @@ import {
   Skeleton,
   keyframes,
   Grid,
+  Tooltip,
 } from '@mui/material';
 import { 
   TrendingUp, 
@@ -35,6 +36,7 @@ import {
   OpenInNew,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 import { 
   fetchUnifiedMarkets, 
   UnifiedMarket,
@@ -62,6 +64,12 @@ interface WatchlistMarket extends UnifiedMarket {
   isFavorite?: boolean;
 }
 
+interface DataFreshness {
+  last_updated: string | null;
+  platforms: Record<string, { updated_at: string; item_count: number; status: string }>;
+  server_time: string;
+}
+
 export const Terminal: React.FC = () => {
   const theme = useTheme();
   const navigate = useNavigate();
@@ -71,6 +79,7 @@ export const Terminal: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedMarket, setSelectedMarket] = useState<WatchlistMarket | null>(null);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [dataFreshness, setDataFreshness] = useState<DataFreshness | null>(null);
   
   // Order state
   const [orderSide, setOrderSide] = useState<'buy' | 'sell'>('buy');
@@ -83,13 +92,20 @@ export const Terminal: React.FC = () => {
   const fetchMarkets = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetchUnifiedMarkets({
-        platform: 'all',
-        category: 'trending',
-        pageSize: 20,
-        status: 'open',
-        sort: 'volume_desc',
-      });
+      const [response, freshnessRes] = await Promise.all([
+        fetchUnifiedMarkets({
+          platform: 'all',
+          category: 'trending',
+          pageSize: 20,
+          status: 'open',
+          sort: 'volume_desc',
+        }),
+        axios.get<DataFreshness>(`${import.meta.env.VITE_API_BASE_URL || ''}/dashboard/data-freshness`).catch(() => null),
+      ]);
+      
+      if (freshnessRes?.data) {
+        setDataFreshness(freshnessRes.data);
+      }
       
       const marketsWithFav = response.markets.map(m => ({
         ...m,
@@ -170,16 +186,23 @@ export const Terminal: React.FC = () => {
         <Box sx={{ 
           p: 2, 
           borderBottom: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
         }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-            Top Markets
-          </Typography>
-          <IconButton size="small" onClick={fetchMarkets} disabled={loading}>
-            <Refresh sx={{ fontSize: 18, animation: loading ? `${blink} 1s infinite` : 'none' }} />
-          </IconButton>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: dataFreshness ? 1 : 0 }}>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+              Top Markets
+            </Typography>
+            <IconButton size="small" onClick={fetchMarkets} disabled={loading}>
+              <Refresh sx={{ fontSize: 18, animation: loading ? `${blink} 1s infinite` : 'none' }} />
+            </IconButton>
+          </Box>
+          {dataFreshness?.last_updated && (
+            <Tooltip title="Last data refresh from all platforms">
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#22C55E', display: 'inline-block' }} />
+                Updated: {new Date(dataFreshness.last_updated).toLocaleTimeString()}
+              </Typography>
+            </Tooltip>
+          )}
         </Box>
 
         {/* Markets List */}

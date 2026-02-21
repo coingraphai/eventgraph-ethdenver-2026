@@ -3,8 +3,9 @@
  * Shows aggregated prediction markets from Polymarket + Kalshi via Dome API
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { format } from 'date-fns';
+import axios from 'axios';
 import {
   Box,
   Typography,
@@ -59,11 +60,18 @@ import { useMarkets, CategoryFilter } from '../hooks/useMarkets';
 import { useWatchlist } from '../hooks/useWatchlist';
 import { useAlerts } from '../hooks/useAlerts';
 
+interface DataFreshness {
+  last_updated: string | null;
+  platforms: Record<string, { updated_at: string; item_count: number; status: string }>;
+  server_time: string;
+}
+
 // Tab to category mapping
 const TAB_CATEGORIES: CategoryFilter[] = ['all', 'Politics', 'Crypto', 'Sports', 'Entertainment', 'Other'];
 
 export const Markets: React.FC = () => {
   const navigate = useNavigate();
+  const [dataFreshness, setDataFreshness] = useState<DataFreshness | null>(null);
   
   // Market data hook
   const {
@@ -96,6 +104,19 @@ export const Markets: React.FC = () => {
   const marketsPerPage = 10;
   const [rawDataDialogOpen, setRawDataDialogOpen] = useState(false);
   const [selectedRawData, setSelectedRawData] = useState<any>(null);
+
+  // Fetch data freshness
+  useEffect(() => {
+    const fetchFreshness = async () => {
+      try {
+        const res = await axios.get<DataFreshness>(`${import.meta.env.VITE_API_BASE_URL || ''}/dashboard/data-freshness`);
+        setDataFreshness(res.data);
+      } catch (err) {
+        console.error('Failed to fetch data freshness:', err);
+      }
+    };
+    fetchFreshness();
+  }, []);
 
   // Calculate pagination
   const totalPages = Math.ceil(filteredMarkets.length / marketsPerPage);
@@ -174,9 +195,24 @@ export const Markets: React.FC = () => {
             <Typography variant="h4" fontWeight={700} gutterBottom>
               Markets Overview
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Live prediction markets from Polymarket & Kalshi via Dome API
-            </Typography>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Typography variant="body2" color="text.secondary">
+                Live prediction markets from Polymarket & Kalshi via Dome API
+              </Typography>
+              {dataFreshness?.last_updated && (
+                <Chip
+                  size="small"
+                  label={`Updated: ${new Date(dataFreshness.last_updated).toLocaleTimeString()}`}
+                  sx={{ 
+                    backgroundColor: 'rgba(34, 197, 94, 0.1)', 
+                    color: '#22C55E',
+                    fontSize: '0.7rem',
+                    height: 22,
+                  }}
+                  icon={<Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: '#22C55E', ml: 1 }} />}
+                />
+              )}
+            </Stack>
           </Box>
           <Stack direction="row" spacing={1}>
             <Tooltip title="Refresh markets">
@@ -392,6 +428,9 @@ export const Markets: React.FC = () => {
               ) : (
                 paginatedMarkets.map((market) => {
                   const hasAlerts = getAlertsForMarket(market.id).length > 0;
+                  // Use eventId for database events, fall back to market.id
+                  const eventId = (market as any).eventId || market.id.replace(`${market.platform.toLowerCase()}_`, '');
+                  const platformSlug = market.platform.toLowerCase() === 'polymarket' ? 'poly' : market.platform.toLowerCase();
                   
                   return (
                     <TableRow
@@ -403,7 +442,7 @@ export const Markets: React.FC = () => {
                           backgroundColor: 'action.hover',
                         },
                       }}
-                      onClick={() => navigate(`/terminal?market=${market.id}&platform=${market.platform}`)}
+                      onClick={() => navigate(`/event/${platformSlug}/${encodeURIComponent(eventId)}`)}
                     >
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <IconButton
@@ -491,10 +530,14 @@ export const Markets: React.FC = () => {
                               )}
                             </IconButton>
                           </Tooltip>
-                          <Tooltip title="Open in Terminal">
+                          <Tooltip title="View Event Details">
                             <IconButton
                               size="small"
-                              onClick={() => navigate(`/terminal?market=${market.id}&platform=${market.platform}`)}
+                              onClick={() => {
+                                const evtId = (market as any).eventId || market.id.replace(`${market.platform.toLowerCase()}_`, '');
+                                const pSlug = market.platform.toLowerCase() === 'polymarket' ? 'poly' : market.platform.toLowerCase();
+                                navigate(`/event/${pSlug}/${encodeURIComponent(evtId)}`);
+                              }}
                             >
                               <ZoomIn fontSize="small" />
                             </IconButton>

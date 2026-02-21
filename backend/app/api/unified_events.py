@@ -57,6 +57,75 @@ def dt_to_ts(dt) -> Optional[int]:
     return None
 
 
+def _kalshi_event_title(titles: list, top_title: str) -> tuple:
+    """
+    Derive (event_title, top_candidate_name) from Kalshi multi-outcome market titles.
+
+    E.g. titles = ["Will Trump nominate Kevin Hassett as Fed Chair?",
+                   "Will Trump nominate Kevin Warsh as Fed Chair?"]
+    Returns ("Who will Trump nominate as Fed Chair?", "Kevin Hassett")
+    """
+    clean = [t.strip() for t in titles if t and t.strip()]
+    if len(clean) <= 1:
+        return (clean[0] if clean else top_title, "")
+
+    split = [t.split() for t in clean]
+    min_len = min(len(s) for s in split)
+
+    # Longest common prefix (word-level, ignore trailing punctuation)
+    prefix_len = 0
+    for i in range(min_len):
+        if len({s[i].rstrip("?,.") for s in split}) == 1:
+            prefix_len += 1
+        else:
+            break
+
+    # Longest common suffix (word-level)
+    rev = [list(reversed(s)) for s in split]
+    suffix_len = 0
+    for i in range(min_len - prefix_len):
+        if len({s[i].rstrip("?,.") for s in rev}) == 1:
+            suffix_len += 1
+        else:
+            break
+
+    prefix_words = split[0][:prefix_len]
+    suffix_words = list(reversed(rev[0][:suffix_len]))
+
+    # Drop trailing articles/particles from prefix that precede the variable
+    # e.g. "Will the [TEAM] win..." → prefix="Will the" → drop "the"
+    _articles = {"the", "a", "an"}
+    while prefix_words and prefix_words[-1].lower() in _articles:
+        prefix_len -= 1
+        prefix_words = prefix_words[:-1]
+
+    # Re-extract candidate with corrected prefix_len
+    top_split = (top_title or clean[0]).split()
+    cand_end = len(top_split) - suffix_len if suffix_len > 0 else len(top_split)
+    candidate = " ".join(top_split[prefix_len:cand_end]).strip("?,. ")
+    # Strip leading articles from the candidate name itself
+    # e.g. "the Tampa Bay" → "Tampa Bay"
+    cand_words = candidate.split()
+    while cand_words and cand_words[0].lower() in _articles:
+        cand_words = cand_words[1:]
+    candidate = " ".join(cand_words)
+
+    if len(prefix_words) + len(suffix_words) < 2:
+        return (clean[0], candidate)
+
+    # Build event title: "Will X..." → "Who will X...?"
+    if prefix_words and prefix_words[0].lower() == "will":
+        event_title = "Who will " + " ".join(prefix_words[1:] + suffix_words)
+    else:
+        event_title = " ".join(prefix_words + suffix_words)
+
+    event_title = event_title.strip()
+    if not event_title.endswith("?"):
+        event_title += "?"
+
+    return (event_title, candidate)
+
+
 def compute_ann_roi(yes_price: Optional[float], end_date) -> Optional[float]:
     """Annualised ROI if YES resolves: ((1-p)/p) * (365/days_left) * 100"""
     if not yes_price or not (0 < yes_price < 1) or end_date is None:
@@ -88,7 +157,19 @@ class EventSummary(BaseModel):
     market_count: int = 1
     total_volume: float = 0.0
     volume_24h: float = 0.0
-    end_time: Optional[int] = None   # unix timestamp
+    volume_7d: float = 0.0
+    trades_24h: int = 0
+    unique_traders: int = 0
+    liquidity: float = 0.0
+    daily_avg: float = 0.0          # average daily volume
+    start_time: Optional[int] = None  # unix timestamp
+    end_time: Optional[int] = None  # unix timestamp
+    status: str = "active"          # active | closed | resolved | paused
+    source_url: Optional[str] = None
+    top_yes_price: Optional[float] = None  # YES price of highest-probability market
+    top_no_price: Optional[float] = None   # NO price of highest-probability market
+    top_prob_title: Optional[str] = None   # title of highest-probability market
+    last_activity: Optional[int] = None  # unix timestamp of last trade
     sample_titles: List[str] = []    # first 3 market titles for tooltip
 
 
@@ -158,14 +239,25 @@ WITH poly_grouped AS (
     SELECT
         'polymarket'::text                                                             AS platform,
         extra_data->>'event_slug'                                                      AS event_id,
-        (array_agg(title       ORDER BY COALESCE(volume_total,0) DESC NULLS LAST))[1] AS sample_title,
+        (array_agg(title       ORDER BY COALESCE(yes_price,0) DESC NULLS LAST))[1]    AS sample_title,
         (array_agg(image_url   ORDER BY COALESCE(volume_total,0) DESC NULLS LAST))[1] AS image_url,
         (array_agg(category_name ORDER BY COALESCE(volume_total,0) DESC NULLS LAST))[1] AS category,
         SUM(COALESCE(volume_total, 0))                                                 AS total_volume,
         SUM(COALESCE(volume_24h,   0))                                                 AS total_volume_24h,
+        SUM(COALESCE(volume_7d,    0))                                                 AS total_volume_7d,
+        SUM(COALESCE(trade_count_24h, 0))                                              AS total_trades_24h,
+        SUM(COALESCE(unique_traders, 0))                                               AS total_unique_traders,
+        SUM(COALESCE(liquidity, 0))                                                    AS total_liquidity,
         COUNT(*)                                                                        AS market_count,
         MIN(end_date)                                                                   AS earliest_end,
-        array_agg(title ORDER BY COALESCE(volume_total,0) DESC NULLS LAST)             AS all_titles
+        MAX(last_trade_at)                                                             AS last_activity,
+        array_agg(title ORDER BY COALESCE(volume_total,0) DESC NULLS LAST)             AS all_titles,
+        MIN(start_date)                                                                AS earliest_start,
+        (array_agg(status     ORDER BY COALESCE(volume_total,0) DESC NULLS LAST))[1]  AS event_status,
+        (array_agg(source_url ORDER BY COALESCE(volume_total,0) DESC NULLS LAST))[1]  AS event_source_url,
+        (array_agg(yes_price  ORDER BY COALESCE(yes_price,0) DESC NULLS LAST))[1]     AS top_yes_price,
+        (array_agg(no_price   ORDER BY COALESCE(yes_price,0) DESC NULLS LAST))[1]     AS top_no_price,
+        (array_agg(title      ORDER BY COALESCE(yes_price,0) DESC NULLS LAST))[1]     AS top_prob_title
     FROM predictions_silver.markets
     WHERE is_active = TRUE
       AND source = 'polymarket'
@@ -176,14 +268,25 @@ kalshi_grouped AS (
     SELECT
         'kalshi'::text                                                                 AS platform,
         extra_data->>'event_ticker'                                                    AS event_id,
-        (array_agg(title       ORDER BY COALESCE(volume_total,0) DESC NULLS LAST))[1] AS sample_title,
+        (array_agg(title       ORDER BY COALESCE(yes_price,0) DESC NULLS LAST))[1]    AS sample_title,
         NULL::text                                                                     AS image_url,
         (array_agg(category_name ORDER BY COALESCE(volume_total,0) DESC NULLS LAST))[1] AS category,
         SUM(COALESCE(volume_total, 0))                                                 AS total_volume,
         SUM(COALESCE(volume_24h,   0))                                                 AS total_volume_24h,
+        SUM(COALESCE(volume_7d,    0))                                                 AS total_volume_7d,
+        SUM(COALESCE(trade_count_24h, 0))                                              AS total_trades_24h,
+        SUM(COALESCE(unique_traders, 0))                                               AS total_unique_traders,
+        SUM(COALESCE(liquidity, 0))                                                    AS total_liquidity,
         COUNT(*)                                                                        AS market_count,
         MIN(end_date)                                                                   AS earliest_end,
-        array_agg(title ORDER BY COALESCE(volume_total,0) DESC NULLS LAST)             AS all_titles
+        MAX(last_trade_at)                                                             AS last_activity,
+        array_agg(title ORDER BY COALESCE(volume_total,0) DESC NULLS LAST)             AS all_titles,
+        MIN(start_date)                                                                AS earliest_start,
+        (array_agg(status     ORDER BY COALESCE(volume_total,0) DESC NULLS LAST))[1]  AS event_status,
+        (array_agg(source_url ORDER BY COALESCE(volume_total,0) DESC NULLS LAST))[1]  AS event_source_url,
+        (array_agg(yes_price  ORDER BY COALESCE(yes_price,0) DESC NULLS LAST))[1]     AS top_yes_price,
+        (array_agg(no_price   ORDER BY COALESCE(yes_price,0) DESC NULLS LAST))[1]     AS top_no_price,
+        (array_agg(title      ORDER BY COALESCE(yes_price,0) DESC NULLS LAST))[1]     AS top_prob_title
     FROM predictions_silver.markets
     WHERE is_active = TRUE
       AND source = 'kalshi'
@@ -199,9 +302,20 @@ limitless_events AS (
         category_name                      AS category,
         COALESCE(volume_total, 0)          AS total_volume,
         COALESCE(volume_24h,   0)          AS total_volume_24h,
+        COALESCE(volume_7d,    0)          AS total_volume_7d,
+        COALESCE(trade_count_24h, 0)       AS total_trades_24h,
+        COALESCE(unique_traders, 0)        AS total_unique_traders,
+        COALESCE(liquidity, 0)             AS total_liquidity,
         1::bigint                          AS market_count,
         end_date                           AS earliest_end,
-        ARRAY[title]                       AS all_titles
+        last_trade_at                      AS last_activity,
+        ARRAY[title]                       AS all_titles,
+        start_date                         AS earliest_start,
+        status                             AS event_status,
+        source_url                         AS event_source_url,
+        yes_price                          AS top_yes_price,
+        no_price                           AS top_no_price,
+        title                              AS top_prob_title
     FROM predictions_silver.markets
     WHERE is_active = TRUE
       AND source = 'limitless'
@@ -224,16 +338,78 @@ def _build_event_summary(row, platform_filter: Optional[str] = None) -> EventSum
     image_url = row.image_url
 
     # Derive human-readable title
+    top_candidate = ""  # used for Kalshi multi-outcome subtitle
     if platform == "polymarket":
         title = slug_to_title(event_id)
+    elif platform == "kalshi" and int(row.market_count or 1) > 1:
+        # Multi-outcome: derive event question and extract top candidate name
+        all_t = row.all_titles or []
+        raw_top = (row.top_prob_title or row.sample_title or "").strip()
+        derived_title, top_candidate = _kalshi_event_title(all_t, raw_top)
+        title = derived_title or (row.sample_title or "").strip()
     else:
         title = (row.sample_title or "").strip()
 
     category = (row.category or "").strip() or None
     total_vol = float(row.total_volume or 0)
-    vol_24h = float(row.total_volume_24h or 0)
+    vol_24h_raw = float(row.total_volume_24h or 0)
+    vol_7d_raw = float(row.total_volume_7d or 0) if hasattr(row, 'total_volume_7d') else 0.0
+    trades_24h = int(row.total_trades_24h or 0) if hasattr(row, 'total_trades_24h') else 0
+    unique_traders = int(row.total_unique_traders or 0) if hasattr(row, 'total_unique_traders') else 0
+    liquidity = float(row.total_liquidity or 0) if hasattr(row, 'total_liquidity') else 0.0
     market_count = int(row.market_count or 1)
     end_ts = dt_to_ts(row.earliest_end)
+    last_activity_ts = dt_to_ts(row.last_activity) if hasattr(row, 'last_activity') else None
+
+    # Cross-calculate missing volume metrics
+    # Polymarket: has 7d volume, estimate 24h as 7d/7
+    # Kalshi: has 24h volume, estimate 7d as 24h*7
+    if platform == "polymarket":
+        vol_7d = vol_7d_raw
+        vol_24h = vol_24h_raw if vol_24h_raw > 0 else (vol_7d_raw / 7 if vol_7d_raw > 0 else 0)
+    elif platform == "kalshi":
+        vol_24h = vol_24h_raw
+        vol_7d = vol_7d_raw if vol_7d_raw > 0 else (vol_24h_raw * 7 if vol_24h_raw > 0 else 0)
+    else:  # limitless
+        vol_24h = vol_24h_raw
+        vol_7d = vol_7d_raw
+
+    # Daily average: prefer 7d/7, fallback to 24h, fallback to total/90
+    if vol_7d > 0:
+        daily_avg = vol_7d / 7
+    elif vol_24h > 0:
+        daily_avg = vol_24h
+    elif total_vol > 0:
+        daily_avg = total_vol / 90  # rough estimate
+    else:
+        daily_avg = 0.0
+
+    start_ts = dt_to_ts(row.earliest_start) if hasattr(row, 'earliest_start') else None
+    event_status = ((row.event_status or "active").strip().lower()) if hasattr(row, 'event_status') else "active"
+    top_yes_price = float(row.top_yes_price) if hasattr(row, 'top_yes_price') and row.top_yes_price is not None else None
+    top_no_price  = float(row.top_no_price)  if hasattr(row, 'top_no_price')  and row.top_no_price  is not None else None
+    top_prob_title = (row.top_prob_title or "").strip() or None if hasattr(row, 'top_prob_title') else None
+    # For Kalshi multi-outcome events, use the extracted candidate name as subtitle
+    if platform == "kalshi" and int(row.market_count or 1) > 1 and top_candidate:
+        top_prob_title = top_candidate
+    # Build event-level URL
+    if platform == "polymarket":
+        event_source_url = f"https://polymarket.com/event/{event_id}"
+    elif platform == "kalshi":
+        # Use the stored source_url of the highest-volume market — this is a
+        # valid Kalshi URL (e.g. https://kalshi.com/markets/KXFEDCHAIRNOM-29-KH).
+        # The event-ticker-only URL (/markets/KXSB-26) is invalid for multi-market
+        # events because Kalshi's router needs the full 3-part path which requires
+        # a series slug we don't have in the DB.
+        db_url = (row.event_source_url or None) if hasattr(row, 'event_source_url') else None
+        if db_url:
+            event_source_url = db_url  # already valid
+        elif event_id:
+            event_source_url = f"https://kalshi.com/markets/{event_id}"
+        else:
+            event_source_url = None
+    else:
+        event_source_url = (row.event_source_url or None) if hasattr(row, 'event_source_url') else None
 
     all_titles = row.all_titles or []
     sample_titles = [t for t in all_titles[:3] if t]
@@ -247,7 +423,19 @@ def _build_event_summary(row, platform_filter: Optional[str] = None) -> EventSum
         market_count=market_count,
         total_volume=total_vol,
         volume_24h=vol_24h,
+        volume_7d=vol_7d,
+        trades_24h=trades_24h,
+        unique_traders=unique_traders,
+        liquidity=liquidity,
+        daily_avg=daily_avg,
+        start_time=start_ts,
         end_time=end_ts,
+        status=event_status,
+        source_url=event_source_url,
+        top_yes_price=top_yes_price,
+        top_no_price=top_no_price,
+        top_prob_title=top_prob_title,
+        last_activity=last_activity_ts,
         sample_titles=sample_titles,
     )
 
@@ -323,13 +511,22 @@ async def list_events(
     rows = db.execute(text(data_sql), params).fetchall()
 
     events: List[EventSummary] = []
-    platform_counts: Dict[str, int] = {"polymarket": 0, "kalshi": 0, "limitless": 0}
 
     for row in rows:
         ev = _build_event_summary(row)
         events.append(ev)
-        if ev.platform in platform_counts:
-            platform_counts[ev.platform] += 1
+
+    # Get total platform counts (unfiltered) - this shows ALL events per platform
+    platform_counts_sql = f"""
+        SELECT platform, COUNT(*) as cnt
+        FROM ({base_sql}) t
+        GROUP BY platform
+    """
+    platform_rows = db.execute(text(platform_counts_sql)).fetchall()
+    platform_counts: Dict[str, int] = {"polymarket": 0, "kalshi": 0, "limitless": 0}
+    for prow in platform_rows:
+        if prow.platform in platform_counts:
+            platform_counts[prow.platform] = int(prow.cnt)
 
     total_pages = max(1, (total + page_size - 1) // page_size)
 

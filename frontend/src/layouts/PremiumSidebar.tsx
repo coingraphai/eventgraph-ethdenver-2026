@@ -19,10 +19,10 @@ import {
   FilterList as ScreenerIcon,
   SwapHoriz as ArbitrageIcon,
   CompareArrows as CrossVenueIcon,
-  EmojiEvents as LeaderboardIcon,
-  NotificationsActive as AlertsIcon,
+  // EmojiEvents as LeaderboardIcon, // Hidden for now
+  // NotificationsActive as AlertsIcon, // Hidden for now
   AutoAwesome as AskAIIcon,
-  AttachMoney as PricingIcon,
+  // AttachMoney as PricingIcon, // Hidden for now
   AccountBalanceWallet as VaultIcon,
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
@@ -59,14 +59,14 @@ export const PremiumSidebar: React.FC<PremiumSidebarProps> = ({ onNewChat }) => 
 
   const navItems: NavItem[] = [
     { id: 'home', name: 'Home', icon: HomeIcon, route: '/' },
-    // { id: 'events', name: 'Events', icon: MarketsIcon, route: '/events' }, // TODO: re-enable when complete
+    { id: 'events', name: 'Events', icon: MarketsIcon, route: '/events' },
     { id: 'screener', name: 'Screener', icon: ScreenerIcon, route: '/screener' },
     { id: 'cross-venue', name: 'Compare', icon: CrossVenueIcon, route: '/cross-venue', color: '#3B82F6' },
     { id: 'arbitrage', name: 'Arbitrage', icon: ArbitrageIcon, route: '/arbitrage', color: '#22C55E' },
     { id: 'execution', name: 'Execution', icon: VaultIcon, route: '/execution', color: '#8B5CF6' },
-    { id: 'leaderboard', name: 'Leaderboard', icon: LeaderboardIcon, route: '/leaderboard', color: '#F59E0B' },
-    { id: 'alerts', name: 'Alerts', icon: AlertsIcon, route: '/alerts', color: '#EF4444' },
-    { id: 'pricing', name: 'Pricing', icon: PricingIcon, route: '/pricing' },
+    // { id: 'leaderboard', name: 'Leaderboard', icon: LeaderboardIcon, route: '/leaderboard', color: '#F59E0B' }, // Hidden for now
+    // { id: 'alerts', name: 'Alerts', icon: AlertsIcon, route: '/alerts', color: '#EF4444' }, // Hidden for now
+    // { id: 'pricing', name: 'Pricing', icon: PricingIcon, route: '/pricing' }, // Hidden for now
   ];
 
   const isActive = (route: string) => {

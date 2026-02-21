@@ -720,6 +720,7 @@ async def fetch_all_from_silver_db(search=None, min_volume=None) -> tuple:
                 "market_slug": row.slug or row.source_market_id,
                 "event_slug": event_slug,
                 "image": row.image_url,
+                "source_url": row.source_url or f"https://polymarket.com/event/{event_slug}",
             })
             event_group = event_slug
             # Make a readable label: replace dashes with spaces, title case
@@ -730,6 +731,7 @@ async def fetch_all_from_silver_db(search=None, min_volume=None) -> tuple:
             extra.update({
                 "market_ticker": row.source_market_id,
                 "event_ticker": event_ticker,
+                "source_url": row.source_url or f"https://kalshi.com/markets/{row.source_market_id}",
             })
             event_group = event_ticker
             event_group_label = event_ticker  # e.g. KXNBA-26
@@ -740,6 +742,7 @@ async def fetch_all_from_silver_db(search=None, min_volume=None) -> tuple:
                 "market_slug": slug,
                 "image": row.image_url,
                 "liquidity": float(row.liquidity) if row.liquidity else 0,
+                "source_url": row.source_url or f"https://limitless.exchange/markets/{slug}",
             })
             # Group by asset name extracted from slug (e.g. "dollarbtc" → "BTC")
             if slug:
@@ -752,7 +755,10 @@ async def fetch_all_from_silver_db(search=None, min_volume=None) -> tuple:
                 event_group = None
         else:
             platform_key = "opiniontrade"
-            extra.update({"market_slug": row.slug or row.source_market_id})
+            extra.update({
+                "market_slug": row.slug or row.source_market_id,
+                "source_url": row.source_url or "",
+            })
 
         if platform_key not in platform_counts:
             continue

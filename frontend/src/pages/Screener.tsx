@@ -115,12 +115,11 @@ const VOLUME_FILTERS = [
 const SORT_OPTIONS = [
   { value: 'volume_desc', label: '📊 Volume (High→Low)' },
   { value: 'volume_asc', label: '📉 Volume (Low→High)' },
+  { value: 'volume_24h_desc', label: '🔥 24h Volume (High→Low)' },
   { value: 'price_desc', label: '💰 Price (High→Low)' },
   { value: 'price_asc', label: '💸 Price (Low→High)' },
   { value: 'ending_soon', label: '⏰ Ending Soon' },
   { value: 'newest', label: '🆕 Recently Added' },
-  { value: 'change_desc', label: '📈 Most Moving (24h)' },
-  { value: 'ann_roi_desc', label: '🎯 Best ROI' },
 ];
 
 // Time filter options
@@ -238,6 +237,16 @@ export const Screener: React.FC = () => {
     return `${Math.floor(diff / 604800)}w`;
   };
 
+  const formatEndDate = (endTime: number | null) => {
+    if (!endTime) return '—';
+    const date = new Date(endTime * 1000);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: '2-digit',
+    });
+  };
+
   const toggleWatchlist = (marketId: string) => {
     setWatchlist(prev => {
       const next = new Set(prev);
@@ -252,7 +261,7 @@ export const Screener: React.FC = () => {
 
   const handleExport = () => {
     const csv = [
-      ['Market', 'Event', 'Platform', 'Category', 'YES Price', 'NO Price', '24h Change %', 'Ann. ROI %', 'Total Volume', 'Vol 24h', 'End Time'].join(','),
+      ['Market', 'Event', 'Platform', 'Category', 'YES Price', 'NO Price', '24h Volume', 'Total Volume', 'End Date', 'Source URL'].join(','),
       ...markets.map(m => [
         `"${m.title.replace(/"/g, '""')}"`,
         `"${(m.event_group_label || '').replace(/"/g, '""')}"`,
@@ -260,11 +269,10 @@ export const Screener: React.FC = () => {
         m.category || '',
         m.last_price ? (m.last_price * 100).toFixed(1) + '%' : '',
         m.no_price ? (m.no_price * 100).toFixed(1) + '%' : '',
-        m.price_change_pct_24h != null ? m.price_change_pct_24h.toFixed(2) : '',
-        m.ann_roi != null ? m.ann_roi.toFixed(1) : '',
-        m.volume_total_usd || 0,
         m.volume_24h_usd || '',
+        m.volume_total_usd || 0,
         m.end_time ? new Date(m.end_time * 1000).toISOString() : '',
+        m.extra?.source_url || '',
       ].join(','))
     ].join('\n');
     
@@ -785,7 +793,7 @@ export const Screener: React.FC = () => {
                           </Box>
                         </Stack>
 
-                        {/* Footer: Ends In + Ann ROI + Action */}
+                        {/* Footer: Ends In + 24h Vol + Action */}
                         <Stack direction="row" justifyContent="space-between" alignItems="center">
                           <Tooltip title={market.end_time ? new Date(market.end_time * 1000).toLocaleString() : 'No end date'}>
                             <Chip
@@ -796,22 +804,30 @@ export const Screener: React.FC = () => {
                             />
                           </Tooltip>
                           <Stack direction="row" spacing={0.5} alignItems="center">
-                            {market.ann_roi != null && (
-                              <Tooltip title="Annualized ROI if YES resolves">
-                                <Chip
-                                  label={`${market.ann_roi > 9999 ? '>9999' : market.ann_roi.toLocaleString()}% p.a.`}
-                                  size="small"
-                                  sx={{ height: 20, fontSize: '0.62rem', fontWeight: 700, backgroundColor: market.ann_roi > 1000 ? alpha('#F97316', 0.15) : alpha('#22C55E', 0.15), color: market.ann_roi > 1000 ? '#F97316' : '#22C55E' }}
-                                />
-                              </Tooltip>
+                            {(market.volume_24h_usd || 0) > 0 && (
+                              <Chip
+                                label={`${formatVolume(market.volume_24h_usd)} 24h`}
+                                size="small"
+                                sx={{ height: 20, fontSize: '0.62rem', fontWeight: 700, backgroundColor: alpha(theme.palette.info.main, 0.1), color: theme.palette.info.main }}
+                              />
                             )}
-                            <IconButton
-                              size="small"
-                              onClick={e => { e.stopPropagation(); handleMarketClick(market); }}
-                              sx={{ p: 0.3 }}
-                            >
-                              <OpenInNew sx={{ fontSize: 15 }} />
-                            </IconButton>
+                            <Tooltip title={`Open on ${PLATFORM_NAMES[market.platform] || market.platform}`}>
+                              <IconButton
+                                size="small"
+                                onClick={e => {
+                                  e.stopPropagation();
+                                  const url = market.extra?.source_url;
+                                  if (url) {
+                                    window.open(url, '_blank', 'noopener,noreferrer');
+                                  } else {
+                                    handleMarketClick(market);
+                                  }
+                                }}
+                                sx={{ p: 0.3 }}
+                              >
+                                <OpenInNew sx={{ fontSize: 15 }} />
+                              </IconButton>
+                            </Tooltip>
                           </Stack>
                         </Stack>
                       </Box>
@@ -853,17 +869,16 @@ export const Screener: React.FC = () => {
                 <TableCell sx={{ fontWeight: 600 }} align="right">YES Price</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="right">NO Price</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="right">
-                  <Tooltip title="Price change in the last 24 hours">
-                    <span>24h Δ</span>
+                  <Tooltip title="Trading volume in the last 24 hours">
+                    <span>24h Vol</span>
                   </Tooltip>
                 </TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="right">
-                  <Tooltip title="Annualized return if YES resolves: ((1-price)/price) × (365/days_left)">
-                    <span>Ann. ROI</span>
+                <TableCell sx={{ fontWeight: 600 }} align="center">
+                  <Tooltip title="Market end / resolution date">
+                    <span>End Date</span>
                   </Tooltip>
                 </TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="right">Volume</TableCell>
-                <TableCell sx={{ fontWeight: 600 }} align="center">Ends In</TableCell>
                 <TableCell sx={{ fontWeight: 600 }} align="center">Action</TableCell>
               </TableRow>
             </TableHead>
@@ -879,22 +894,21 @@ export const Screener: React.FC = () => {
                     <TableCell><Skeleton animation="wave" width={50} /></TableCell>
                     <TableCell><Skeleton animation="wave" width={50} /></TableCell>
                     <TableCell><Skeleton animation="wave" width={60} /></TableCell>
-                    <TableCell><Skeleton animation="wave" width={60} /></TableCell>
                     <TableCell><Skeleton animation="wave" width={70} /></TableCell>
-                    <TableCell><Skeleton animation="wave" width={40} /></TableCell>
+                    <TableCell><Skeleton animation="wave" width={70} /></TableCell>
                     <TableCell><Skeleton animation="wave" width={40} /></TableCell>
                   </TableRow>
                 ))
               ) : error ? (
                 <TableRow>
-                  <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                     <Typography color="error">{error}</Typography>
                     <Button onClick={fetchMarkets} sx={{ mt: 1 }}>Retry</Button>
                   </TableCell>
                 </TableRow>
               ) : filteredMarkets.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
                     {viewMode === 'watchlist' ? (
                       <Box>
                         <StarBorder sx={{ fontSize: 48, color: 'text.disabled', mb: 1 }} />
@@ -1049,104 +1063,59 @@ export const Screener: React.FC = () => {
                         {formatPrice(market.no_price)}
                       </Typography>
                     </TableCell>
-                    {/* 24h Price Change */}
+                    {/* 24h Volume */}
                     <TableCell align="right">
-                      {market.price_change_pct_24h != null && market.price_change_pct_24h !== 0 ? (
-                        <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.3 }}>
-                          {market.price_change_pct_24h > 0
-                            ? <TrendingUp sx={{ fontSize: 14, color: '#22C55E' }} />
-                            : <TrendingDown sx={{ fontSize: 14, color: '#EF4444' }} />
-                          }
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              fontFamily: 'monospace',
-                              fontWeight: 600,
-                              fontSize: '0.78rem',
-                              color: market.price_change_pct_24h > 0 ? '#22C55E' : '#EF4444',
-                            }}
-                          >
-                            {market.price_change_pct_24h > 0 ? '+' : ''}{market.price_change_pct_24h.toFixed(1)}%
-                          </Typography>
-                        </Box>
+                      {(market.volume_24h_usd || 0) > 0 ? (
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontFamily: 'monospace',
+                            fontWeight: 600,
+                            fontSize: '0.78rem',
+                            color: 'text.primary',
+                          }}
+                        >
+                          {formatVolume(market.volume_24h_usd)}
+                        </Typography>
                       ) : (
                         <Typography variant="body2" color="text.disabled" sx={{ fontSize: '0.75rem' }}>—</Typography>
                       )}
                     </TableCell>
-                    {/* Annualized ROI */}
-                    <TableCell align="right">
-                      {market.ann_roi != null ? (
-                        <Tooltip title="Annualized return if YES resolves at $1">
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              fontFamily: 'monospace',
-                              fontWeight: 600,
-                              fontSize: '0.78rem',
-                              color: market.ann_roi > 1000 ? '#F97316'
-                                : market.ann_roi > 200 ? '#22C55E'
-                                : '#94A3B8',
-                            }}
-                          >
-                            {market.ann_roi > 9999 ? '>9,999' : market.ann_roi.toLocaleString()}%
-                          </Typography>
-                        </Tooltip>
-                      ) : (
-                        <Typography variant="body2" color="text.disabled" sx={{ fontSize: '0.75rem' }}>—</Typography>
-                      )}
+                    {/* End Date */}
+                    <TableCell align="center">
+                      <Tooltip title={market.end_time ? new Date(market.end_time * 1000).toLocaleString() : 'No end date'}>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            fontSize: '0.78rem',
+                            color: market.end_time && (market.end_time - Date.now() / 1000) < 86400 
+                              ? '#EF4444' 
+                              : 'text.secondary',
+                            fontWeight: market.end_time && (market.end_time - Date.now() / 1000) < 86400 ? 600 : 400,
+                          }}
+                        >
+                          {formatEndDate(market.end_time)}
+                        </Typography>
+                      </Tooltip>
                     </TableCell>
                     {/* Volume */}
                     <TableCell align="right">
                       <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
                         {formatVolume(market.volume_total_usd)}
                       </Typography>
-                      {(market.volume_24h_usd || 0) > 0 && (
-                        <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', fontSize: '0.65rem' }}>
-                          {formatVolume(market.volume_24h_usd!)} 24h
-                          {market.volume_24h_change_pct != null && market.volume_24h_change_pct !== 0 && (
-                            <Box component="span" sx={{
-                              ml: 0.5,
-                              color: market.volume_24h_change_pct > 0 ? '#22C55E' : '#EF4444',
-                            }}>
-                              {market.volume_24h_change_pct > 0 ? '+' : ''}{market.volume_24h_change_pct.toFixed(0)}%
-                            </Box>
-                          )}
-                        </Typography>
-                      )}
                     </TableCell>
                     <TableCell align="center">
-                      <Tooltip title={market.end_time ? new Date(market.end_time * 1000).toLocaleString() : 'No end date'}>
-                        <Chip
-                          icon={<AccessTime sx={{ fontSize: 12 }} />}
-                          label={formatTimeRemaining(market.end_time)}
-                          size="small"
-                          sx={{
-                            height: 22,
-                            fontSize: '0.7rem',
-                            backgroundColor: 
-                              market.end_time && (market.end_time - Date.now() / 1000) < 86400 
-                                ? alpha('#EF4444', 0.1) 
-                                : alpha(theme.palette.text.secondary, 0.1),
-                            color: 
-                              market.end_time && (market.end_time - Date.now() / 1000) < 86400 
-                                ? '#EF4444' 
-                                : 'text.secondary',
-                            '& .MuiChip-icon': { 
-                              color: market.end_time && (market.end_time - Date.now() / 1000) < 86400 
-                                ? '#EF4444' 
-                                : 'text.secondary' 
-                            },
-                          }}
-                        />
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell align="center">
-                      <Tooltip title="Open Market">
+                      <Tooltip title={`Open on ${PLATFORM_NAMES[market.platform] || market.platform}`}>
                         <IconButton 
                           size="small"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleMarketClick(market);
+                            const url = market.extra?.source_url;
+                            if (url) {
+                              window.open(url, '_blank', 'noopener,noreferrer');
+                            } else {
+                              handleMarketClick(market);
+                            }
                           }}
                         >
                           <OpenInNew sx={{ fontSize: 18 }} />

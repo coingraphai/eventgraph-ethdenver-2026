@@ -1,76 +1,26 @@
 #!/bin/bash
-# EventGraph - Start All Services
-# Usage: ./start.sh
-
-set -e
-
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$ROOT_DIR"
-
-echo "🚀 Starting EventGraph Application..."
-echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-# Colors
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Check if PostgreSQL is running (using cloud database, so skip local check)
-echo -e "${BLUE}📊 Database:${NC} Using DigitalOcean PostgreSQL"
-
-# Start Backend
-echo ""
-echo -e "${BLUE}1️⃣  Starting Backend API...${NC}"
+cd "$ROOT_DIR"; mkdir -p logs
+GREEN='\033[0;32m'; BLUE='\033[0;34m'; YELLOW='\033[1;33m'; NC='\033[0m'
+PYTHON="$ROOT_DIR/.venv/bin/python"
+echo -e "${BLUE}Stopping any existing services...${NC}"
+lsof -ti:8001 2>/dev/null | xargs kill -9 2>/dev/null || true
+lsof -ti:5173 2>/dev/null | xargs kill -9 2>/dev/null || true
+sleep 1
+echo -e "${BLUE}Starting Backend (port 8001)...${NC}"
 cd "$ROOT_DIR/backend"
-source "$ROOT_DIR/.venv/bin/activate"
-nohup python main.py > ../logs/backend.log 2>&1 &
-BACKEND_PID=$!
-echo $BACKEND_PID > ../logs/backend.pid
-echo -e "${GREEN}   ✓ Backend started (PID: $BACKEND_PID)${NC}"
-echo -e "   📝 Logs: logs/backend.log"
-echo -e "   🌐 URL: http://localhost:8001"
-
-# Wait for backend to start
-echo -e "${YELLOW}   ⏳ Waiting for backend to be ready...${NC}"
+nohup "$PYTHON" -m uvicorn main:app --host 0.0.0.0 --port 8001 > "$ROOT_DIR/logs/backend.log" 2>&1 &
+echo $! > "$ROOT_DIR/logs/backend.pid"
 sleep 5
-
-# Start Data Pipeline Scheduler (every 5 min delta)
-echo ""
-echo -e "${BLUE}2️⃣  Starting Data Pipeline Scheduler...${NC}"
-cd "$ROOT_DIR/data-pipeline"
-pkill -f "predictions_ingest.cli schedule" 2>/dev/null; sleep 1
-nohup "$ROOT_DIR/.venv/bin/python" -m predictions_ingest.cli schedule > "$ROOT_DIR/logs/pipeline.log" 2>&1 &
-PIPELINE_PID=$!
-echo $PIPELINE_PID > "$ROOT_DIR/logs/pipeline.pid"
-echo -e "${GREEN}   ✓ Pipeline scheduler started (PID: $PIPELINE_PID)${NC}"
-echo -e "   📝 Logs: logs/pipeline.log"
-echo -e "   ⏱️  Runs delta every 5 min, gold agg every 5 min"
-sleep 2
-
-# Start Frontend
-echo ""
-echo -e "${BLUE}3️⃣  Starting Frontend...${NC}"
+echo -e "${GREEN}Backend started (PID: $(cat "$ROOT_DIR/logs/backend.pid"))${NC}"
+echo -e "${BLUE}Starting Frontend (port 5173)...${NC}"
 cd "$ROOT_DIR/frontend"
-nohup npm run dev > ../logs/frontend.log 2>&1 &
-FRONTEND_PID=$!
-echo $FRONTEND_PID > ../logs/frontend.pid
-echo -e "${GREEN}   ✓ Frontend started (PID: $FRONTEND_PID)${NC}"
-echo -e "   📝 Logs: logs/frontend.log"
-echo -e "   🌐 URL: http://localhost:5173"
-
+nohup node_modules/.bin/vite --host 0.0.0.0 --port 5173 > "$ROOT_DIR/logs/frontend.log" 2>&1 &
+echo $! > "$ROOT_DIR/logs/frontend.pid"
+sleep 4
+echo -e "${GREEN}Frontend started (PID: $(cat "$ROOT_DIR/logs/frontend.pid"))${NC}"
 echo ""
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}✨ All services started successfully!${NC}"
-echo ""
-echo -e "📱 ${BLUE}Frontend:${NC} http://localhost:5173"
-echo -e "🔌 ${BLUE}Backend API:${NC} http://localhost:8001"
-echo -e "📚 ${BLUE}API Docs:${NC} http://localhost:8001/docs"
-echo ""
-echo -e "📝 View logs:"
-echo -e "   Backend:  tail -f logs/backend.log"
-echo -e "   Frontend: tail -f logs/frontend.log"
-echo -e "   Pipeline: tail -f logs/pipeline.log"
-echo ""
-echo -e "🛑 Stop services: ./stop.sh"
-echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${GREEN}EventGraph running:${NC}"
+echo "  Frontend: http://localhost:5173"
+echo "  Backend:  http://localhost:8001"
+echo "  Stop:     ./stop.sh"

@@ -548,12 +548,19 @@ function isHomeCacheFresh(): boolean {
   return Date.now() - homeCache.timestamp < HOME_CACHE_TTL && (homeCache.intelligence !== null || homeCache.eventsStats !== null);
 }
 
+interface DataFreshness {
+  last_updated: string | null;
+  platforms: Record<string, { updated_at: string; item_count: number; status: string }>;
+  server_time: string;
+}
+
 export const Home: React.FC = () => {
   const theme = useTheme();
   const navigate = useNavigate();
   const [data, setData] = useState<DashboardData | null>(homeCache.dashboard);
   const [intelligence, setIntelligence] = useState<IntelligenceData | null>(homeCache.intelligence);
   const [eventsStats, setEventsStats] = useState<Record<string, any> | null>(homeCache.eventsStats);
+  const [dataFreshness, setDataFreshness] = useState<DataFreshness | null>(null);
   const [loading, setLoading] = useState(!isHomeCacheFresh());
   const [error, setError] = useState<string | null>(null);
 
@@ -571,11 +578,11 @@ export const Home: React.FC = () => {
       setError(null);
       const apiBase = import.meta.env.VITE_API_BASE_URL || '';
       
-      // Fetch intelligence AND events stats in parallel for fastest load
-      // events/stats is always fast (<200ms) since it uses merged cache
-      const [intelligenceRes, eventsStatsRes] = await Promise.allSettled([
-        axios.get<IntelligenceData>(`${apiBase}/api/intelligence/intelligence`),
-        axios.get(`${apiBase}/api/db/events/stats`),
+      // Fetch intelligence, events stats, and data freshness in parallel
+      const [intelligenceRes, eventsStatsRes, freshnessRes] = await Promise.allSettled([
+        axios.get<IntelligenceData>(`${apiBase}/intelligence/intelligence`),
+        axios.get(`${apiBase}/db/events/stats`),
+        axios.get<DataFreshness>(`${apiBase}/dashboard/data-freshness`),
       ]);
       
       let newIntelligence: IntelligenceData | null = null;
@@ -588,6 +595,9 @@ export const Home: React.FC = () => {
       if (eventsStatsRes.status === 'fulfilled') {
         newEventsStats = eventsStatsRes.value.data;
         setEventsStats(newEventsStats);
+      }
+      if (freshnessRes.status === 'fulfilled') {
+        setDataFreshness(freshnessRes.value.data);
       }
 
       // Update module-level cache
@@ -917,6 +927,16 @@ export const Home: React.FC = () => {
                   <Typography variant="caption" color="text.secondary">markets</Typography>
                 </Box>
               </Stack>
+              
+              {/* Last Updated Indicator */}
+              {dataFreshness?.last_updated && (
+                <Box sx={{ mt: 2, pt: 2, borderTop: `1px solid ${alpha(theme.palette.divider, 0.1)}`, textAlign: 'center' }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                    <Box component="span" sx={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: TRADING_COLORS.POSITIVE, display: 'inline-block' }} />
+                    Data last updated: {new Date(dataFreshness.last_updated).toLocaleString()}
+                  </Typography>
+                </Box>
+              )}
             </Paper>
           )}
         </Box>

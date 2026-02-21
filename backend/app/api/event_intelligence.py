@@ -25,7 +25,7 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/event-intelligence", tags=["Event Intelligence"])
+router = APIRouter(prefix="/event-intelligence", tags=["Event Intelligence"])
 
 # Dome API config
 DOME_API_KEY = os.getenv("DOME_API_KEY", "")

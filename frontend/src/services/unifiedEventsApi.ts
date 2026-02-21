@@ -26,7 +26,19 @@ export interface EventSummary {
   market_count: number;
   total_volume: number;
   volume_24h: number;
-  end_time?: number | null; // unix timestamp
+  volume_7d: number;
+  trades_24h: number;
+  unique_traders: number;
+  liquidity: number;
+  daily_avg: number;
+  start_time?: number | null; // unix timestamp
+  end_time?: number | null;   // unix timestamp
+  status: string;             // 'active' | 'closed' | 'resolved' | 'paused'
+  source_url?: string | null;
+  top_yes_price?: number | null;
+  top_no_price?: number | null;
+  top_prob_title?: string | null;
+  last_activity?: number | null; // unix timestamp of last trade
   sample_titles: string[];  // first 3 market titles for tooltip/preview
 }
 

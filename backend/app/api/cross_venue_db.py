@@ -244,6 +244,106 @@ LIMIT 300
 """
 
 
+def _titles_are_semantically_compatible(poly_title: str, kalshi_title: str) -> bool:
+    """
+    Reject matches that look similar on tokens but are semantically different.
+    Returns True if the two titles are plausibly about the same event.
+    """
+    import re
+    pt = poly_title.lower()
+    kt = kalshi_title.lower()
+
+    # ── Dollar amount mismatch ──────────────────────────────────────────────
+    poly_dollars = set(re.findall(r'\$[\d,]+(?:k|m|b)?', pt))
+    kalshi_dollars = set(re.findall(r'\$[\d,]+(?:k|m|b)?', kt))
+    if poly_dollars and kalshi_dollars and not poly_dollars.intersection(kalshi_dollars):
+        return False
+
+    # ── Sport mismatch (NBA ≠ NFL, baseball ≠ hockey, etc.) ─────────────────
+    SPORT_GROUPS = {
+        'nba': 'basketball', 'basketball': 'basketball', 'pro basketball': 'basketball',
+        'nfl': 'football', 'football': 'football',
+        'mlb': 'baseball', 'baseball': 'baseball',
+        'nhl': 'hockey', 'hockey': 'hockey',
+        'soccer': 'soccer', 'mls': 'soccer', 'premier league': 'soccer',
+        'la liga': 'soccer', 'ligue': 'soccer', 'champions league': 'soccer',
+        'serie a': 'soccer',
+    }
+    def _sport(text):
+        found = set()
+        for key, grp in SPORT_GROUPS.items():
+            if key in text:
+                found.add(grp)
+        return found
+    ps, ks = _sport(pt), _sport(kt)
+    if ps and ks and not ps.intersection(ks):
+        return False
+
+    # ── Different award shows ───────────────────────────────────────────────
+    AWARDS = ['oscar', 'grammy', 'emmy', 'golden globe', 'critics choice',
+              'bafta', 'tony', 'cannes', 'sundance']
+    pa = {a for a in AWARDS if a in pt}
+    ka = {a for a in AWARDS if a in kt}
+    if pa and ka and not pa.intersection(ka):
+        return False
+
+    # ── Different central banks ─────────────────────────────────────────────
+    BANKS = ['federal reserve', 'fed ', ' fed', 'bank of canada', 'bank of england',
+             'ecb', 'boj', 'bank of japan', 'rba', 'reserve bank']
+    pb = {b for b in BANKS if b in pt}
+    kb = {b for b in BANKS if b in kt}
+    if pb and kb and not pb.intersection(kb):
+        return False
+
+    # ── Different cities for same event type ────────────────────────────────
+    CITIES = ['paris', 'london', 'los angeles', 'new york', 'berlin', 'tokyo',
+              'rome', 'madrid', 'sydney', 'chicago', 'houston', 'miami']
+    if any(c in pt for c in CITIES) and any(c in kt for c in CITIES):
+        pc = {c for c in CITIES if c in pt}
+        kc = {c for c in CITIES if c in kt}
+        # Only reject if both have cities AND they differ AND similar event type
+        if pc and kc and not pc.intersection(kc):
+            # Check if same event type
+            event_types = ['election', 'mayoral', 'mayor', 'governor', 'race']
+            if any(e in pt for e in event_types) and any(e in kt for e in event_types):
+                return False
+
+    # ── Completely different subjects ───────────────────────────────────────
+    # Crypto vs non-crypto
+    CRYPTO = {'bitcoin', 'btc', 'ethereum', 'eth', 'solana', 'sol', 'crypto'}
+    pc = {c for c in CRYPTO if c in pt}
+    kc = {c for c in CRYPTO if c in kt}
+    if pc and not kc and ('price' in pt or 'hit' in pt):
+        # Poly is about crypto price, Kalshi is NOT about crypto at all
+        if 'price' not in kt and 'hit' not in kt and not kc:
+            return False
+    if kc and not pc and ('price' in kt or 'hit' in kt):
+        if 'price' not in pt and 'hit' not in pt and not pc:
+            return False
+
+    # ── Year mismatch (strict: 2025 vs 2027 = reject, but 2025-26 ≈ 2026 = ok)
+    combined_pt = re.sub(r'(\d{4})-(\d{2})\b', lambda m: f"{m.group(1)} 20{m.group(2)}", pt)
+    combined_kt = re.sub(r'(\d{4})-(\d{2})\b', lambda m: f"{m.group(1)} 20{m.group(2)}", kt)
+    py = set(re.findall(r'20[2-3]\d', combined_pt))
+    ky = set(re.findall(r'20[2-3]\d', combined_kt))
+    if py and ky and not py.intersection(ky):
+        # Allow adjacent-year flexibility for season-spanning events (e.g. 2025 vs 2026)
+        close_enough = any(abs(int(a) - int(b)) <= 1 for a in py for b in ky)
+        if not close_enough:
+            return False
+
+    # ── NBA game-specific vs general event ──────────────────────────────────
+    # e.g. "NBA Uta Mem 2026 02 20" (specific game) should not match random Kalshi props
+    nba_game_re = re.compile(r'nba\s+[a-z]{3}\s+[a-z]{3}\s+\d{4}', re.IGNORECASE)
+    if nba_game_re.search(pt) and not nba_game_re.search(kt):
+        # Poly is a specific NBA game, Kalshi must also reference that game
+        return False
+    if nba_game_re.search(kt) and not nba_game_re.search(pt):
+        return False
+
+    return True
+
+
 def _build_kalshi_from_live() -> Optional[List[tuple]]:
     """
     Build Kalshi (DbPlatformEvent, tokens) tuples directly from the Kalshi
@@ -413,7 +513,7 @@ def bust_cross_venue_cache():
 
 @router.get("/cross-venue-events-db", response_model=DbCrossVenueResponse)
 def get_cross_venue_events_db(
-    min_similarity: float = Query(0.15, ge=0.05, le=1.0),
+    min_similarity: float = Query(0.25, ge=0.10, le=1.0),
     min_volume: float = Query(0, ge=0),
     limit: int = Query(60, ge=5, le=200),
     search: Optional[str] = Query(None),
@@ -508,16 +608,20 @@ def get_cross_venue_events_db(
                 ke, ktokens_ = kalshi_events[ki]
                 sim = _jaccard(ptokens, ktokens_)
                 if sim > best_sim:
+                    # Semantic validation: reject obviously wrong matches
+                    ke_check = kalshi_events[ki][0]
+                    if not _titles_are_semantically_compatible(pe.title, ke_check.title):
+                        continue
                     best_sim = sim
                     best_ki  = ki
 
-            if best_ki < 0 or best_sim < 0.05:
+            if best_ki < 0 or best_sim < 0.20:
                 continue
 
             ke, _ = kalshi_events[best_ki]
             matched_kalshi.add(best_ki)
 
-            confidence = "high" if best_sim >= 0.55 else "medium" if best_sim >= 0.28 else "low"
+            confidence = "high" if best_sim >= 0.50 else "medium" if best_sim >= 0.30 else "low"
 
             total_vol = pe.total_volume + ke.total_volume
             vol_diff  = abs(pe.total_volume - ke.total_volume)

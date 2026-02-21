@@ -211,8 +211,8 @@ export const Arbitrage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadingStep, setLoadingStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [minSpread, setMinSpread] = useState(1); // Minimum spread percentage - lowered to 1%
-  const [minMatchScore, setMinMatchScore] = useState(0.20); // Minimum match confidence - 20%
+  const [minSpread, setMinSpread] = useState(2); // Minimum spread percentage - 2%
+  const [minMatchScore, setMinMatchScore] = useState(0.50); // Minimum match confidence - 50%
   const [sortBy, setSortBy] = useState<'spread' | 'profit' | 'volume'>('spread');
   const [rawStats, setRawStats] = useState({
     totalOpportunities: 0,
@@ -315,7 +315,7 @@ export const Arbitrage: React.FC = () => {
       // DB endpoint: instant response, no live API calls
       const API_BASE = import.meta.env.VITE_API_URL || '';
       const response = await fetch(
-        `${API_BASE}/api/arbitrage/opportunities-db?min_spread=0.5&min_match_score=0.20&limit=200`
+        `${API_BASE}/api/arbitrage/opportunities-db?min_spread=0.5&min_match_score=0.50&limit=200`
       );
       
       if (!response.ok) {
@@ -549,6 +549,28 @@ export const Arbitrage: React.FC = () => {
         </Grid>
       </Grid>
 
+      {/* Price Staleness Warning */}
+      <Paper
+        elevation={0}
+        sx={{
+          p: 1.5,
+          mb: 2,
+          borderRadius: 2,
+          backgroundColor: alpha(CHART_COLORS.amber, 0.08),
+          border: `1px solid ${alpha(CHART_COLORS.amber, 0.25)}`,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+        }}
+      >
+        <Warning sx={{ color: CHART_COLORS.amber, fontSize: 18 }} />
+        <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.4 }}>
+          <strong>Price Delay:</strong> Prices update every ~15 minutes from the data pipeline.
+          Small spreads (2-5¢) may have already closed by the time you see them.
+          Always verify live prices on each platform before trading.
+        </Typography>
+      </Paper>
+
       {/* Filters */}
       <Paper
         elevation={0}
@@ -709,9 +731,9 @@ export const Arbitrage: React.FC = () => {
                       </Typography>
                     </Box>
                     <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
-                      <Tooltip title={`Spread: Price difference between cheapest buy and highest sell across platforms`} arrow>
+                      <Tooltip title={`Spread: ${(opp.spread * 100).toFixed(1)}¢ absolute price difference across platforms (${opp.spreadPercent.toFixed(1)}%)`} arrow>
                         <Chip
-                          label={`${opp.spreadPercent.toFixed(1)}%`}
+                          label={`${(opp.spread * 100).toFixed(1)}¢ (${opp.spreadPercent.toFixed(1)}%)`}
                           size="small"
                           sx={{
                             backgroundColor: alpha(TRADING_COLORS.YES, 0.15),
@@ -921,7 +943,7 @@ export const Arbitrage: React.FC = () => {
                               boxShadow: `0 2px 6px ${alpha(isBestBuy ? TRADING_COLORS.YES : TRADING_COLORS.NO, 0.3)}`,
                             }}
                           >
-                            {isBestBuy ? 'BUY' : 'SELL'}
+                            {isBestBuy ? 'BUY YES' : 'BUY NO'}
                           </Box>
                         )}
                         
@@ -995,9 +1017,10 @@ export const Arbitrage: React.FC = () => {
       <Box sx={{ mt: 4, p: 3, textAlign: 'center', backgroundColor: alpha(theme.palette.warning.main, 0.05), borderRadius: 2 }}>
         <Warning sx={{ color: 'warning.main', mb: 1 }} />
         <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 800, mx: 'auto' }}>
-          <strong>⚠️ Important Disclaimer:</strong> Arbitrage opportunities are based on automated title matching and may not represent identical markets. 
-          Always verify market questions, terms, and resolution criteria before trading. Consider transaction fees, slippage, and timing risks. 
-          Past spreads do not guarantee future opportunities. This is not financial advice.
+          <strong>⚠️ Important Disclaimer:</strong> Arbitrage opportunities are based on automated title matching and database prices that update every ~15 minutes.
+          Spreads shown may have already closed. The strategy is: BUY YES on the cheaper platform + BUY NO on the more expensive platform.
+          Always verify live prices, market terms, and resolution criteria on each platform before trading. Consider transaction fees, slippage, and timing risks.
+          This is not financial advice.
         </Typography>
       </Box>
 

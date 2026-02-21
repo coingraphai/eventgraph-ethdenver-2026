@@ -134,12 +134,15 @@ class DomeClient(BaseAPIClient):
             # Note: closed=false returns 319k markets (too many)
             params["status"] = "open"
         
-        # Add volume filtering (server-side) to reduce API calls
-        # When min_volume is set, Dome API returns results sorted by volume (highest first)
-        if min_volume and min_volume > 0:
-            params["min_volume"] = min_volume
-            params["sort_by"] = "volume"  # Explicit sort to ensure top markets by volume
-            params["order"] = "desc"       # Descending order (highest volume first)
+        # Always sort by volume descending to get highest-volume markets first.
+        # This ensures near-settled markets (e.g. KW @ 94%) with low 24h volume
+        # but high total volume are not arbitrarily excluded.
+        # NOTE: Dome API requires min_volume to be set for sort_by=volume to
+        # actually work. Without min_volume, the API ignores sort_by and returns
+        # markets in an arbitrary order. min_volume=1 is the minimum effective value.
+        params["sort_by"] = "volume"
+        params["order"] = "desc"
+        params["min_volume"] = max(min_volume or 0, 1)  # Always at least 1 for sort to work
             
         params.update(kwargs)
         
@@ -251,14 +254,18 @@ class DomeClient(BaseAPIClient):
             status = MarketStatus.PAUSED
         
         # Extract prices
-        # Extract prices — Kalshi uses last_price on 0-100 cent scale; others use 0-1 decimal
-        raw_yes = (
+        # Kalshi uses last_price on 0-100 cent scale; others use 0-1 decimal
+        _primary_yes = (
             raw.get("yes_price") or
             raw.get("yesPrice") or
             raw.get("outcomePrices", {}).get("Yes") or
-            (outcomes[0].price if outcomes else None) or
-            raw.get("last_price")   # Kalshi fallback
+            (outcomes[0].price if outcomes else None)
         )
+        _kalshi_last = raw.get("last_price")
+        raw_yes = _primary_yes if _primary_yes is not None else _kalshi_last
+        # If price came from Kalshi's last_price field, it's ALWAYS on 0-100 cent scale
+        # (edge case: last_price=1 is NOT > 1, so plain ">" check would miss it)
+        _from_kalshi_cents = _primary_yes is None and _kalshi_last is not None
         raw_no = (
             raw.get("no_price") or
             raw.get("noPrice") or
@@ -267,7 +274,7 @@ class DomeClient(BaseAPIClient):
         )
         yes_price = self._to_decimal(raw_yes)
         # Kalshi prices are on 0-100 scale → convert to 0-1
-        if yes_price is not None and yes_price > Decimal("1"):
+        if yes_price is not None and (yes_price > Decimal("1") or _from_kalshi_cents):
             yes_price = yes_price / Decimal("100")
         no_price = self._to_decimal(raw_no)
         if no_price is not None and no_price > Decimal("1"):
@@ -905,11 +912,32 @@ class DomeClient(BaseAPIClient):
     
     def normalize_price(self, raw: dict[str, Any], market_id: str) -> PriceSnapshot:
         """Transform raw price data to PriceSnapshot model."""
-        raw_yes = raw.get("yes_price") or raw.get("yesPrice") or raw.get("last_price") or raw.get("price")
-        raw_no = raw.get("no_price") or raw.get("noPrice")
+        # Kalshi market-price endpoint returns {"yes": {"price": 0.94}, "no": {"price": 0.06}}
+        # Flat formats: yes_price, yesPrice, last_price, price
+        _yes_nested = raw.get("yes") or {}
+        _no_nested = raw.get("no") or {}
+        raw_yes = (
+            raw.get("yes_price")
+            or raw.get("yesPrice")
+            or raw.get("last_price")
+            or raw.get("price")
+            or (_yes_nested.get("price") if isinstance(_yes_nested, dict) else None)
+        )
+        raw_no = (
+            raw.get("no_price")
+            or raw.get("noPrice")
+            or (_no_nested.get("price") if isinstance(_no_nested, dict) else None)
+        )
         yes_price = self._to_decimal(raw_yes)
         # Kalshi prices are on 0-100 cent scale → convert to 0-1
-        if yes_price is not None and yes_price > Decimal("1"):
+        # Edge case: last_price=1 (1 cent) is NOT > 1, so we also check source
+        # But the nested yes.price format is already on 0-1 scale (Dome normalizes it)
+        _from_kalshi_cents = (
+            self.SOURCE == DataSource.KALSHI
+            and not (raw.get("yes_price") or raw.get("yesPrice"))
+            and not isinstance(_yes_nested, dict)  # nested format is already 0-1
+        )
+        if yes_price is not None and (yes_price > Decimal("1") or _from_kalshi_cents):
             yes_price = yes_price / Decimal("100")
         no_price = self._to_decimal(raw_no)
         if no_price is not None and no_price > Decimal("1"):

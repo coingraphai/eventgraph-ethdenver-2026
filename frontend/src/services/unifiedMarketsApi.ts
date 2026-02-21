@@ -37,6 +37,8 @@ export interface UnifiedMarket {
   event_group?: string | null;
   event_group_label?: string | null;
   extra: {
+    // Common
+    source_url?: string;
     // Polymarket
     condition_id?: string;
     market_slug?: string;
