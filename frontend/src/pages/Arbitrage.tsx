@@ -1,7 +1,7 @@
 /**
  * Arbitrage Scanner - Multi-Platform Version
  * Cross-venue price comparison across 4 prediction markets
- * Polymarket, Kalshi, Limitless, OpinionTrade
+ * Polymarket, Kalshi, Limitless
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
@@ -78,7 +78,6 @@ const PLATFORM_KEY_MAP: Record<string, keyof typeof CENTRALIZED_PLATFORM_COLORS>
   polymarket: 'polymarket',
   kalshi: 'kalshi',
   limitless: 'limitless',
-  opiniontrade: 'opiniontrade',
 };
 
 // Helper to get platform color info from backend key

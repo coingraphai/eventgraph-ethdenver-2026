@@ -50,16 +50,6 @@ const generateArbitrageOpportunities = (): ArbitrageOpportunity[] => {
       confidence: 85,
     },
     {
-      event_title: 'Bitcoin $150K by Q2 2026',
-      platform_a: 'opiniontrade',
-      platform_b: 'polymarket',
-      price_a: 0.31,
-      price_b: 0.28,
-      spread: 3.0,
-      potential_profit: 10.7,
-      confidence: 72,
-    },
-    {
       event_title: 'Trump 2028 Announcement',
       platform_a: 'kalshi',
       platform_b: 'limitless',
@@ -122,7 +112,6 @@ export const ArbitrageCard: React.FC<ArbitrageCardProps> = ({ opportunities = []
       polymarket: 'Polymarket',
       kalshi: 'Kalshi',
       limitless: 'Limitless',
-      opiniontrade: 'OpinionTrade',
     };
     return names[key] || key;
   };

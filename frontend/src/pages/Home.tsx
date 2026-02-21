@@ -29,16 +29,12 @@ import {
   AccountBalance,
   Speed,
   Bolt,
-  OpenInNew,
   BarChart,
   LocalFireDepartment,
   Refresh,
   SwapHoriz,
-  Whatshot,
   Insights,
-  PieChart as PieChartIcon,
   CompareArrows,
-  Hub,
 } from '@mui/icons-material';
 import { keyframes } from '@mui/system';
 import { useNavigate } from 'react-router-dom';
@@ -48,14 +44,10 @@ import {
   PlatformDonutChart,
   CategoryTreemap,
   VolumeTrendChart,
-  PlatformHealthCard,
   ArbitrageCard,
-  TrendingTopicsCard,
   MarketMoversCard,
   PriceComparisonWidget,
-  VolumeHeatmap,
   SmartSearchPreview,
-  CorrelationExplorer,
 } from '../components/charts';
 
 // Animations
@@ -86,6 +78,7 @@ interface DashboardData {
   platform_stats: {
     polymarket: any;
     kalshi: any;
+    limitless: any;
   };
   recent_activity: any[];
   timestamp: string;
@@ -639,12 +632,11 @@ export const Home: React.FC = () => {
   };
 
   // Use intelligence data for platform counts, with events stats as fallback
-  // This ensures Limitless/OpinionTrade show correct counts even if intelligence API is slow
+  // This ensures Limitless shows correct counts even if intelligence API is slow
   const polymarketMarkets = intelligence?.data_sources?.polymarket || eventsStats?.platform_counts?.polymarket || data?.platform_stats?.polymarket?.total_markets || 0;
   const kalshiMarkets = intelligence?.data_sources?.kalshi || eventsStats?.platform_counts?.kalshi || data?.platform_stats?.kalshi?.total_markets || 0;
   const limitlessMarkets = intelligence?.data_sources?.limitless || eventsStats?.platform_counts?.limitless || 0;
-  const opiniontradeMarkets = intelligence?.data_sources?.opiniontrade || eventsStats?.platform_counts?.opiniontrade || 0;
-  const totalMarkets = intelligence?.global_metrics?.total_markets || (polymarketMarkets + kalshiMarkets + limitlessMarkets + opiniontradeMarkets);
+  const totalMarkets = intelligence?.global_metrics?.total_markets || (polymarketMarkets + kalshiMarkets + limitlessMarkets);
   const totalVolume = intelligence?.global_metrics?.estimated_total_volume || (data?.platform_stats?.polymarket?.top_10_volume || 0) + (data?.platform_stats?.kalshi?.top_10_volume || 0);
 
   // True when counts are still being fetched (neither intelligence nor eventsStats loaded yet)
@@ -738,7 +730,7 @@ export const Home: React.FC = () => {
               fontSize: { xs: '1rem', sm: '1.15rem' },
             }}
           >
-            Unified odds, analytics, and market intelligence across platforms.
+            Unified odds, analytics, and market intelligence across 3 platforms.
           </Typography>
 
           <Typography
@@ -752,7 +744,7 @@ export const Home: React.FC = () => {
               fontSize: { xs: '0.95rem', sm: '1.05rem' },
             }}
           >
-            A single terminal that aggregates prediction markets, enables cross-venue analysis, highlights arbitrage opportunities, and lets users query events and markets using AI-powered natural language insights.
+            A unified terminal aggregating Polymarket, Kalshi, and Limitless — with cross-venue analysis, arbitrage detection, and AI-powered market insights.
           </Typography>
 
           {/* CTA Buttons - Order: Browse Markets, Ask AI, View Arbitrage */}
@@ -863,7 +855,7 @@ export const Home: React.FC = () => {
                     Total Markets
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    4 platforms
+                    3 platforms
                   </Typography>
                 </Box>
 
@@ -885,7 +877,7 @@ export const Home: React.FC = () => {
                 {/* Kalshi */}
                 <Box sx={{ textAlign: 'center', minWidth: 100 }}>
                   <Typography variant="body2" fontWeight={700} sx={{ color: PLATFORM_COLORS.kalshi.primary, mb: 1 }}>
-                    KALSHI
+                    Kalshi
                   </Typography>
                   {countsLoading ? (
                     <Skeleton variant="text" width={60} height={40} sx={{ mx: 'auto' }} />
@@ -899,7 +891,7 @@ export const Home: React.FC = () => {
 
                 {/* Limitless */}
                 <Box sx={{ textAlign: 'center', minWidth: 100 }}>
-                  <Typography variant="caption" fontWeight={600} sx={{ color: PLATFORM_COLORS.limitless.primary, mb: 1, display: 'block' }}>
+                  <Typography variant="body2" fontWeight={700} sx={{ color: PLATFORM_COLORS.limitless.primary, mb: 1 }}>
                     Limitless
                   </Typography>
                   {countsLoading ? (
@@ -907,21 +899,6 @@ export const Home: React.FC = () => {
                   ) : (
                     <Typography variant="h4" fontWeight={700} color={PLATFORM_COLORS.limitless.primary}>
                       {formatNumber(limitlessMarkets)}
-                    </Typography>
-                  )}
-                  <Typography variant="caption" color="text.secondary">markets</Typography>
-                </Box>
-
-                {/* OpinionTrade */}
-                <Box sx={{ textAlign: 'center', minWidth: 100 }}>
-                  <Typography variant="caption" fontWeight={600} sx={{ color: PLATFORM_COLORS.opiniontrade.primary, mb: 1, display: 'block' }}>
-                    OpinionTrade
-                  </Typography>
-                  {countsLoading ? (
-                    <Skeleton variant="text" width={50} height={40} sx={{ mx: 'auto' }} />
-                  ) : (
-                    <Typography variant="h4" fontWeight={700} color={PLATFORM_COLORS.opiniontrade.primary}>
-                      {formatNumber(opiniontradeMarkets)}
                     </Typography>
                   )}
                   <Typography variant="caption" color="text.secondary">markets</Typography>
@@ -951,7 +928,7 @@ export const Home: React.FC = () => {
               Market Intelligence Dashboard
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Real-time analytics from {intelligence?.global_metrics?.platforms_active || 4} prediction platforms
+              Real-time analytics from 3 prediction platforms
             </Typography>
           </Box>
           <Tooltip title="Refresh data">
@@ -1004,7 +981,7 @@ export const Home: React.FC = () => {
                 <MetricTile
                   icon={<Bolt sx={{ fontSize: 24 }} />}
                   label="Platforms"
-                  value={String(intelligence?.global_metrics?.platforms_active || 4)}
+                  value="3"
                   color={PLATFORM_COLORS.polymarket.primary}
                   delay={0.25}
                 />
@@ -1253,7 +1230,7 @@ export const Home: React.FC = () => {
                   </Stack>
                   
                   <Grid container spacing={2} alignItems="stretch">
-                    {/* Row 1: Market Movers + Volume Heatmap */}
+                    {/* Row 1: Market Movers + Cross-Platform Prices */}
                     <Grid item xs={12} md={6}>
                       <Paper
                         elevation={0}
@@ -1296,25 +1273,6 @@ export const Home: React.FC = () => {
                           height: '100%',
                         }}
                       >
-                        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1.5 }}>
-                          � Trading Activity Heatmap
-                        </Typography>
-                        <VolumeHeatmap />
-                      </Paper>
-                    </Grid>
-
-                    {/* Row 2: Cross-Platform Prices + AI Search */}
-                    <Grid item xs={12} md={6}>
-                      <Paper
-                        elevation={0}
-                        sx={{
-                          p: 2.5,
-                          borderRadius: 2,
-                          background: alpha(theme.palette.background.paper, 0.3),
-                          border: `1px solid ${alpha(theme.palette.divider, 0.06)}`,
-                          height: '100%',
-                        }}
-                      >
                         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
                           <CompareArrows sx={{ fontSize: 18, color: theme.palette.info.main }} />
                           <Typography variant="subtitle2" fontWeight={600}>
@@ -1325,77 +1283,7 @@ export const Home: React.FC = () => {
                       </Paper>
                     </Grid>
 
-                    <Grid item xs={12} md={6}>
-                      <Paper
-                        elevation={0}
-                        onClick={() => navigate('/ask-predictions')}
-                        sx={{
-                          p: 2.5,
-                          borderRadius: 2,
-                          background: alpha(theme.palette.background.paper, 0.3),
-                          border: `1px solid ${alpha(theme.palette.divider, 0.06)}`,
-                          height: '100%',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease',
-                          '&:hover': {
-                            border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
-                            boxShadow: `0 4px 20px ${alpha(theme.palette.primary.main, 0.1)}`,
-                          },
-                        }}
-                      >
-                        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-                          <AutoAwesome sx={{ fontSize: 18, color: theme.palette.warning.main }} />
-                          <Typography variant="subtitle2" fontWeight={600}>
-                            AI-Powered Search
-                          </Typography>
-                          <Chip 
-                            label="DEMO" 
-                            size="small" 
-                            sx={{ 
-                              height: 18, 
-                              fontSize: '0.6rem',
-                              bgcolor: alpha(theme.palette.warning.main, 0.15),
-                              color: theme.palette.warning.main,
-                            }} 
-                          />
-                        </Stack>
-                        <SmartSearchPreview />
-                      </Paper>
-                    </Grid>
-
-                    {/* Row 3: Correlation Explorer */}
-                    <Grid item xs={12} md={6}>
-                      <Paper
-                        elevation={0}
-                        sx={{
-                          p: 2.5,
-                          borderRadius: 2,
-                          background: alpha(theme.palette.background.paper, 0.3),
-                          border: `1px solid ${alpha(theme.palette.divider, 0.06)}`,
-                          height: '100%',
-                        }}
-                      >
-                        <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-                          <Hub sx={{ fontSize: 18, color: theme.palette.secondary.main }} />
-                          <Typography variant="subtitle2" fontWeight={600}>
-                            Correlation Explorer
-                          </Typography>
-                          <Chip 
-                            label="ALPHA" 
-                            size="small" 
-                            sx={{ 
-                              height: 18, 
-                              fontSize: '0.6rem',
-                              bgcolor: alpha(theme.palette.secondary.main, 0.15),
-                              color: theme.palette.secondary.main,
-                            }} 
-                          />
-                        </Stack>
-                        <CorrelationExplorer />
-                      </Paper>
-                    </Grid>
-
-                    {/* Row 4: Volume Trends (wide) + Donut */}
+                    {/* Row 2: Volume Trends (wide) + Donut */}
                     <Grid item xs={12} md={8}>
                       <Paper
                         elevation={0}
@@ -1415,7 +1303,6 @@ export const Home: React.FC = () => {
                             polymarket: intelligence?.global_metrics?.platform_estimated_volumes?.polymarket || 0,
                             kalshi: intelligence?.global_metrics?.platform_estimated_volumes?.kalshi || 0,
                             limitless: intelligence?.global_metrics?.platform_volumes?.limitless || 0,
-                            opiniontrade: intelligence?.global_metrics?.platform_volumes?.opiniontrade || 0,
                           }}
                         />
                       </Paper>
@@ -1440,14 +1327,13 @@ export const Home: React.FC = () => {
                             polymarket: intelligence?.global_metrics?.platform_counts?.polymarket || eventsStats?.platform_counts?.polymarket || 0,
                             kalshi: intelligence?.global_metrics?.platform_counts?.kalshi || eventsStats?.platform_counts?.kalshi || 0,
                             limitless: intelligence?.global_metrics?.platform_counts?.limitless || eventsStats?.platform_counts?.limitless || 0,
-                            opiniontrade: intelligence?.global_metrics?.platform_counts?.opiniontrade || eventsStats?.platform_counts?.opiniontrade || 0,
                           }}
                           type="markets"
                         />
                       </Paper>
                     </Grid>
 
-                    {/* Row 5: Category Treemap + Arbitrage */}
+                    {/* Row 3: Category Volume Map + Arbitrage Opportunities */}
                     <Grid item xs={12} md={6}>
                       <Paper
                         elevation={0}
@@ -1485,7 +1371,7 @@ export const Home: React.FC = () => {
                             Arbitrage Opportunities
                           </Typography>
                           <Chip 
-                            label="ALPHA" 
+                            label="LIVE" 
                             size="small" 
                             sx={{ 
                               height: 18, 
@@ -1499,59 +1385,41 @@ export const Home: React.FC = () => {
                       </Paper>
                     </Grid>
 
-                    {/* Row 6: Trending Topics + Platform Health */}
-                    <Grid item xs={12} md={6}>
+                    {/* Row 4: AI-Powered Search */}
+                    <Grid item xs={12}>
                       <Paper
                         elevation={0}
+                        onClick={() => navigate('/ask-predictions')}
                         sx={{
                           p: 2.5,
                           borderRadius: 2,
                           background: alpha(theme.palette.background.paper, 0.3),
                           border: `1px solid ${alpha(theme.palette.divider, 0.06)}`,
-                          height: '100%',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s ease',
+                          '&:hover': {
+                            border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+                            boxShadow: `0 4px 20px ${alpha(theme.palette.primary.main, 0.1)}`,
+                          },
                         }}
                       >
                         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1.5 }}>
-                          <Whatshot sx={{ fontSize: 18, color: TRADING_COLORS.NEGATIVE }} />
+                          <AutoAwesome sx={{ fontSize: 18, color: theme.palette.warning.main }} />
                           <Typography variant="subtitle2" fontWeight={600}>
-                            Hot Topics
+                            AI-Powered Search
                           </Typography>
+                          <Chip 
+                            label="TRY IT" 
+                            size="small" 
+                            sx={{ 
+                              height: 18, 
+                              fontSize: '0.6rem',
+                              bgcolor: alpha(theme.palette.warning.main, 0.15),
+                              color: theme.palette.warning.main,
+                            }} 
+                          />
                         </Stack>
-                        <TrendingTopicsCard 
-                          categories={intelligence?.global_metrics?.categories || {}}
-                        />
-                      </Paper>
-                    </Grid>
-
-                    <Grid item xs={12} md={6}>
-                      <Paper
-                        elevation={0}
-                        sx={{
-                          p: 2.5,
-                          borderRadius: 2,
-                          background: alpha(theme.palette.background.paper, 0.3),
-                          border: `1px solid ${alpha(theme.palette.divider, 0.06)}`,
-                          height: '100%',
-                        }}
-                      >
-                        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1.5 }}>
-                          🏥 Platform Health Scores
-                        </Typography>
-                        <Grid container spacing={1.5}>
-                          {intelligence?.platform_comparison?.map((platform) => (
-                            <Grid item xs={6} key={platform.platform}>
-                              <PlatformHealthCard
-                                platform={platform.platform}
-                                displayName={platform.display_name}
-                                totalMarkets={platform.total_markets}
-                                volume={platform.estimated_volume || platform.sample_volume}
-                                liquidity={platform.total_liquidity}
-                                avgPrice={platform.avg_price}
-                                categoriesCount={platform.categories_count}
-                              />
-                            </Grid>
-                          ))}
-                        </Grid>
+                        <SmartSearchPreview />
                       </Paper>
                     </Grid>
                   </Grid>

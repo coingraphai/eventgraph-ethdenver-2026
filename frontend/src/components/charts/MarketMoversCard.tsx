@@ -32,7 +32,6 @@ const generateSampleData = (): { gainers: MarketMover[]; losers: MarketMover[] }
       { title: 'Trump wins 2028 GOP Primary', platform: 'polymarket', price: 0.72, change_24h: 15.3, volume: 1250000 },
       { title: 'Fed cuts rates March 2026', platform: 'kalshi', price: 0.45, change_24h: 12.1, volume: 890000 },
       { title: 'Bitcoin above $200K EOY', platform: 'limitless', price: 0.28, change_24h: 9.8, volume: 560000 },
-      { title: 'Lakers win NBA Finals', platform: 'opiniontrade', price: 0.15, change_24h: 8.5, volume: 340000 },
       { title: 'SpaceX Mars landing 2026', platform: 'polymarket', price: 0.08, change_24h: 7.2, volume: 120000 },
     ],
     losers: [
@@ -40,7 +39,6 @@ const generateSampleData = (): { gainers: MarketMover[]; losers: MarketMover[] }
       { title: 'Recession by Q3 2026', platform: 'polymarket', price: 0.22, change_24h: -14.2, volume: 780000 },
       { title: 'ETH Flips BTC 2026', platform: 'limitless', price: 0.05, change_24h: -11.8, volume: 290000 },
       { title: 'TikTok Ban Upheld', platform: 'kalshi', price: 0.35, change_24h: -9.3, volume: 650000 },
-      { title: 'AI Regulation Passed', platform: 'opiniontrade', price: 0.41, change_24h: -6.7, volume: 180000 },
     ],
   };
 };

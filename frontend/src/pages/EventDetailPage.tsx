@@ -272,8 +272,6 @@ export const EventDetailPage: React.FC = () => {
       return `https://polymarket.com/event/${eventId}?ref=eventgraph`;
     } else if (data?.platform === 'limitless') {
       return `https://limitless.exchange/markets/${eventId}?ref=eventgraph`;
-    } else if (data?.platform === 'opiniontrade') {
-      return `https://app.opinion.trade/detail?topicId=${eventId}&ref=eventgraph`;
     } else {
       return `https://kalshi.com/browse?search=${eventId}&ref=eventgraph`;
     }

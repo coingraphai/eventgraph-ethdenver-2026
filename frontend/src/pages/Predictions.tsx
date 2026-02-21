@@ -214,7 +214,7 @@ export const Predictions: React.FC<PredictionsPageProps> = ({
                   maxWidth: '600px',
                 }}
               >
-                AI-powered prediction market intelligence across Polymarket, Kalshi, Limitless & OpinionTrade
+                AI-powered prediction market intelligence across Polymarket, Kalshi & Limitless
               </Typography>
 
               {/* Capability Chips */}
@@ -222,7 +222,7 @@ export const Predictions: React.FC<PredictionsPageProps> = ({
                 {[
                   { label: '20,000+ Events', icon: '📈' },
                   { label: 'Instant Search', icon: '⚡' },
-                  { label: '4 Platforms', icon: '🌐' },
+                  { label: '3 Platforms', icon: '🌐' },
                   { label: 'Live Data', icon: '🔴' },
                 ].map((cap) => (
                   <Chip

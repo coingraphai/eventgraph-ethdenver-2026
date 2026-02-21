@@ -35,7 +35,6 @@ const PLATFORM_COLORS: Record<string, string> = {
   Polymarket: APP_PLATFORM_COLORS.polymarket.primary,
   Kalshi: APP_PLATFORM_COLORS.kalshi.primary,
   Limitless: APP_PLATFORM_COLORS.limitless.primary,
-  OpinionTrade: APP_PLATFORM_COLORS.opiniontrade.primary,
 };
 
 // Generate sample platform statuses
@@ -45,7 +44,6 @@ const generateSampleStatuses = (): PlatformStatus[] => {
     { name: 'Polymarket', lastUpdate: new Date(now.getTime() - 5000), status: 'live', latency: 45 },
     { name: 'Kalshi', lastUpdate: new Date(now.getTime() - 12000), status: 'live', latency: 78 },
     { name: 'Limitless', lastUpdate: new Date(now.getTime() - 8000), status: 'live', latency: 120 },
-    { name: 'OpinionTrade', lastUpdate: new Date(now.getTime() - 25000), status: 'live', latency: 95 },
   ];
 };
 

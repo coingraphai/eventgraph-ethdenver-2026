@@ -80,7 +80,6 @@ const PLATFORM_COLORS: Record<string, { primary: string; bg: string }> = {
   poly: { primary: '#8B5CF6', bg: 'rgba(139, 92, 246, 0.1)' },
   kalshi: { primary: '#F97316', bg: 'rgba(249, 115, 22, 0.1)' },
   limitless: { primary: '#22C55E', bg: 'rgba(34, 197, 94, 0.1)' },
-  opiniontrade: { primary: '#3B82F6', bg: 'rgba(59, 130, 246, 0.1)' },
 };
 
 // Platform display names
@@ -88,7 +87,6 @@ const PLATFORM_NAMES: Record<string, string> = {
   poly: 'Polymarket',
   kalshi: 'Kalshi',
   limitless: 'Limitless',
-  opiniontrade: 'OpinionTrade',
 };
 
 // Category options
@@ -208,7 +206,7 @@ export const Screener: React.FC = () => {
   const handleMarketClick = (market: UnifiedMarket) => {
     // For Polymarket: navigate to event page using event_slug (groups related markets)
     // For Kalshi: use market_ticker or event_ticker (backend searches all markets)
-    // For Limitless/OpinionTrade: use market id/slug
+    // For Limitless: use market id/slug
     let slug: string;
     if (market.platform === 'poly') {
       // Prefer event_slug for Polymarket (matches Events page behavior)
@@ -447,14 +445,6 @@ export const Screener: React.FC = () => {
               }
             }}>
               Limitless
-            </ToggleButton>
-            <ToggleButton value="opiniontrade" sx={{ 
-              '&.Mui-selected': { 
-                backgroundColor: PLATFORM_COLORS.opiniontrade.bg,
-                color: PLATFORM_COLORS.opiniontrade.primary,
-              }
-            }}>
-              Opinion
             </ToggleButton>
           </ToggleButtonGroup>
 

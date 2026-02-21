@@ -36,7 +36,6 @@ const PLATFORM_NAMES: Record<string, string> = {
   polymarket: 'Polymarket',
   kalshi: 'Kalshi',
   limitless: 'Limitless',
-  opiniontrade: 'OpinionTrade',
 };
 
 // Generate sample comparison data
@@ -60,9 +59,9 @@ const generateSampleData = (): ComparisonEvent[] => {
       platforms: [
         { platform: 'polymarket', price: 0.55, volume: 1200000, change_24h: -1.5 },
         { platform: 'kalshi', price: 0.58, volume: 2100000, change_24h: -0.8 },
-        { platform: 'opiniontrade', price: 0.52, volume: 320000, change_24h: -2.1 },
+        { platform: 'limitless', price: 0.52, volume: 320000, change_24h: -2.1 },
       ],
-      bestBuy: 'opiniontrade',
+      bestBuy: 'limitless',
       bestSell: 'kalshi',
       spread: 6.0,
     },

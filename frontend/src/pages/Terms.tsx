@@ -28,7 +28,7 @@ export const Terms: React.FC = () => {
     },
     {
       title: '2. Description of Service',
-      content: `EventGraph AI is a prediction market intelligence platform that aggregates data from multiple prediction market platforms including Polymarket, Kalshi, Limitless, and OpinionTrade. We provide market analysis, AI-powered insights, arbitrage opportunity detection, and alerting services. We do not execute trades on your behalf.`,
+      content: `EventGraph AI is a prediction market intelligence platform that aggregates data from multiple prediction market platforms including Polymarket, Kalshi, and Limitless. We provide market analysis, AI-powered insights, arbitrage opportunity detection, and alerting services. We do not execute trades on your behalf.`,
     },
     {
       title: '3. User Responsibilities',

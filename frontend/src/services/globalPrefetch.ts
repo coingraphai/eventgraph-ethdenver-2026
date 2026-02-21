@@ -20,7 +20,6 @@ interface GlobalCache {
     polymarket: EventsResponse | null;
     kalshi: EventsResponse | null;
     limitless: EventsResponse | null;
-    opiniontrade: EventsResponse | null;
     all: EventsResponse | null;
     lastUpdated: number;
   };
@@ -34,7 +33,6 @@ const cache: GlobalCache = {
     polymarket: null,
     kalshi: null,
     limitless: null,
-    opiniontrade: null,
     all: null,
     lastUpdated: 0,
   },
@@ -72,7 +70,7 @@ function isCacheFresh(): boolean {
 /**
  * Get cached events (returns null if not available)
  */
-export function getCachedEvents(platform: 'polymarket' | 'kalshi' | 'limitless' | 'opiniontrade' | 'all' = 'all'): EventsResponse | null {
+export function getCachedEvents(platform: 'polymarket' | 'kalshi' | 'limitless' | 'all' = 'all'): EventsResponse | null {
   return cache.events[platform];
 }
 

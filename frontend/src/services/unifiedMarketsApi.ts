@@ -1,18 +1,18 @@
 /**
  * Unified Markets API Service
- * Fetches normalized market data from Polymarket, Kalshi, Limitless, and OpinionTrade
+ * Fetches normalized market data from Polymarket, Kalshi, and Limitless
  */
 
 import axios from 'axios';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
-export type PlatformType = 'all' | 'poly' | 'kalshi' | 'limitless' | 'opiniontrade';
+export type PlatformType = 'all' | 'poly' | 'kalshi' | 'limitless';
 export type CategoryType = 'all' | 'trending' | 'politics' | 'crypto' | 'sports' | 'entertainment' | 'economy' | 'weather' | 'other';
 export type SortType = 'volume_desc' | 'volume_24h_desc' | 'volume_asc' | 'price_desc' | 'price_asc' | 'ending_soon' | 'newest' | 'change_desc' | 'ann_roi_desc';
 
 export interface UnifiedMarket {
-  platform: 'poly' | 'kalshi' | 'limitless' | 'opiniontrade';
+  platform: 'poly' | 'kalshi' | 'limitless';
   id: string;
   title: string;
   status: string;
@@ -56,8 +56,6 @@ export interface UnifiedMarket {
     // Limitless
     liquidity?: number;
     creator?: string;
-    // OpinionTrade
-    category_id?: string;
   };
 }
 

@@ -725,9 +725,6 @@ export const EventAnalyticsPageV2: React.FC = () => {
     if (platform === 'limitless') {
       return `https://limitless.exchange/markets/${eventId}?ref=eventgraph`;
     }
-    if (platform === 'opiniontrade') {
-      return `https://app.opinion.trade/detail?topicId=${eventId}&ref=eventgraph`;
-    }
     return `https://kalshi.com/browse?search=${eventId}&ref=eventgraph`;
   };
 

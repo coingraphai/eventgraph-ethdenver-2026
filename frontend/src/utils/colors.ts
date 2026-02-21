@@ -49,12 +49,6 @@ export const PLATFORM_COLORS = {
     bg: 'rgba(144, 238, 144, 0.12)',
     label: 'Limitless',
   },
-  opiniontrade: {
-    primary: '#FFA500',
-    secondary: '#FF8C00',
-    bg: 'rgba(255, 165, 0, 0.12)',
-    label: 'OpinionTrade',
-  },
 };
 
 // Chart Colors (6 harmonious colors for data visualization)

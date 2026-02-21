@@ -102,7 +102,6 @@ export const VolumeHeatmap: React.FC<VolumeHeatmapProps> = ({ data, platform = '
           <ToggleButton value="polymarket">PM</ToggleButton>
           <ToggleButton value="kalshi">KL</ToggleButton>
           <ToggleButton value="limitless">LM</ToggleButton>
-          <ToggleButton value="opiniontrade">OT</ToggleButton>
         </ToggleButtonGroup>
       </Box>
 

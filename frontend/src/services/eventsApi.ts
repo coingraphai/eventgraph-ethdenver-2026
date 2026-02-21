@@ -6,7 +6,7 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 // Types
-export type EventPlatform = 'all' | 'polymarket' | 'kalshi' | 'limitless' | 'opiniontrade';
+export type EventPlatform = 'all' | 'polymarket' | 'kalshi' | 'limitless';
 export type EventCategory = 'all' | 'politics' | 'crypto' | 'sports' | 'economy' | 'entertainment' | 'other';
 
 export interface EventMarket {
@@ -70,8 +70,6 @@ export interface AggregateMetrics {
   kalshi_volume: number;
   limitless_markets: number;
   limitless_volume: number;
-  opiniontrade_markets: number;
-  opiniontrade_volume: number;
 }
 
 export interface EventsResponse {
@@ -84,7 +82,6 @@ export interface EventsResponse {
     polymarket: number;
     kalshi: number;
     limitless: number;
-    opiniontrade: number;
   };
   aggregate_metrics?: AggregateMetrics;
 }
@@ -285,8 +282,6 @@ export function getPlatformName(platform: string): string {
       return 'Kalshi';
     case 'limitless':
       return 'Limitless';
-    case 'opiniontrade':
-      return 'OpinionTrade';
     default:
       return platform;
   }

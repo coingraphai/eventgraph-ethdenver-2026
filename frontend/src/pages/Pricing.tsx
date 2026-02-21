@@ -70,7 +70,7 @@ const features: PricingFeature[] = [
 const faqs = [
   {
     question: 'What prediction market platforms do you aggregate?',
-    answer: 'EventGraph AI aggregates data from Polymarket, Kalshi, Limitless, and OpinionTrade - providing a unified view across major prediction market platforms.',
+    answer: 'EventGraph AI aggregates data from Polymarket, Kalshi, and Limitless - providing a unified view across major prediction market platforms.',
   },
   {
     question: 'How does the arbitrage scanner work?',

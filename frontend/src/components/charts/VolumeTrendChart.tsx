@@ -22,14 +22,12 @@ interface VolumeTrendChartProps {
     polymarket: number;
     kalshi: number;
     limitless: number;
-    opiniontrade: number;
   };
   historicalData?: Array<{
     timestamp: string;
     polymarket: number;
     kalshi: number;
     limitless: number;
-    opiniontrade: number;
   }>;
 }
 
@@ -37,7 +35,6 @@ const PLATFORM_COLORS = {
   polymarket: APP_PLATFORM_COLORS.polymarket.primary,
   kalshi: APP_PLATFORM_COLORS.kalshi.primary,
   limitless: APP_PLATFORM_COLORS.limitless.primary,
-  opiniontrade: APP_PLATFORM_COLORS.opiniontrade.primary,
 };
 
 // Generate simulated historical data based on current volumes
@@ -63,14 +60,13 @@ const generateHistoricalData = (currentVolumes: Record<string, number>, period: 
       polymarket: Math.round(currentVolumes.polymarket * variance() / trend / points),
       kalshi: Math.round(currentVolumes.kalshi * variance() / trend / points),
       limitless: Math.round(currentVolumes.limitless * variance() / trend / points),
-      opiniontrade: Math.round(currentVolumes.opiniontrade * variance() / trend / points),
       total: 0,
     });
   }
   
   // Calculate totals
   data.forEach(d => {
-    d.total = d.polymarket + d.kalshi + d.limitless + d.opiniontrade;
+    d.total = d.polymarket + d.kalshi + d.limitless;
   });
   
   return data;

@@ -20,7 +20,6 @@ interface PlatformDonutChartProps {
     polymarket: number;
     kalshi: number;
     limitless: number;
-    opiniontrade: number;
   };
   type?: 'markets' | 'volume';
 }
@@ -29,14 +28,12 @@ const PLATFORM_COLORS = {
   polymarket: APP_PLATFORM_COLORS.polymarket.primary,
   kalshi: APP_PLATFORM_COLORS.kalshi.primary,
   limitless: APP_PLATFORM_COLORS.limitless.primary,
-  opiniontrade: APP_PLATFORM_COLORS.opiniontrade.primary,
 };
 
 const PLATFORM_NAMES = {
   polymarket: 'Polymarket',
   kalshi: 'Kalshi',
   limitless: 'Limitless',
-  opiniontrade: 'OpinionTrade',
 };
 
 export const PlatformDonutChart: React.FC<PlatformDonutChartProps> = ({ data, type = 'markets' }) => {

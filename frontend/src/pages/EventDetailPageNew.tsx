@@ -176,9 +176,6 @@ const EventHeader: React.FC<EventHeaderProps> = ({ data, onSearch, onRefresh, is
     if (data.platform === 'limitless') {
       return `https://limitless.exchange/markets/${event.event_id}?ref=eventgraph`;
     }
-    if (data.platform === 'opiniontrade') {
-      return `https://app.opinion.trade/detail?topicId=${event.event_id}&ref=eventgraph`;
-    }
     return `https://kalshi.com/browse?search=${event.event_id}&ref=eventgraph`;
   };
 

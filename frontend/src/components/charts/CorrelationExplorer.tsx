@@ -29,7 +29,6 @@ const PLATFORM_COLORS: Record<string, string> = {
   polymarket: APP_PLATFORM_COLORS.polymarket.primary,
   kalshi: APP_PLATFORM_COLORS.kalshi.primary,
   limitless: APP_PLATFORM_COLORS.limitless.primary,
-  opiniontrade: APP_PLATFORM_COLORS.opiniontrade.primary,
 };
 
 // Generate sample correlation data
